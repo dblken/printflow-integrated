@@ -8,9 +8,10 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
 // Require staff access
+
 require_role('Staff');
 require_once __DIR__ . '/../includes/staff_pending_check.php';
-
+//new test
 $current_user = get_logged_in_user();
 
 // --- STATISTIC CARDS DATA ---
