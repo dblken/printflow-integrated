@@ -1,0 +1,10 @@
+RewriteEngine On
+
+# Redirect /login/ to public/login.php
+RewriteRule ^login/?$ public/login.php [L]
+
+# Redirect /register/ to public/register.php
+RewriteRule ^register/?$ public/register.php [L]
+
+# Redirect /logout/ to public/logout.php
+RewriteRule ^logout/?$ public/logout.php [L]

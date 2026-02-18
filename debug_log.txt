@@ -1,0 +1,10 @@
+2026-02-18 02:11:46 - CSRF Error:
+Session ID: jndln46tfokf4ier0s93d1f6t3
+Stored Token: NOT SET
+Posted Token: 0ef24eb4eab82f4aeacde6d77d62a34e310a08e3e11e6d3917d31b009a8dff58
+Referer: http://localhost/printflow/public/?auth_modal=login&error=Invalid+request.+Please+try+again.
+2026-02-18 02:12:18 - CSRF Error:
+Session ID: jndln46tfokf4ier0s93d1f6t3
+Stored Token: NOT SET
+Posted Token: 0ef24eb4eab82f4aeacde6d77d62a34e310a08e3e11e6d3917d31b009a8dff58
+Referer: http://localhost/printflow/public/?auth_modal=login&error=Invalid+request.+Please+try+again.
