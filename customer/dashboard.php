@@ -70,8 +70,27 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
         </div>
 
+        <!-- Order a Service -->
+        <div class="card" style="border-radius:1rem; margin-bottom:2rem;">
+            <h2 class="ct-section-title">Order a Service</h2>
+            <p class="text-gray-600 text-sm mb-4">Choose a service and submit your order form.</p>
+            <div class="flex flex-wrap gap-2">
+                <a href="order_tarpaulin.php" class="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100">Tarpaulin</a>
+                <a href="order_tshirt.php" class="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100">T-Shirt</a>
+                <a href="order_stickers.php" class="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100">Stickers</a>
+                <a href="order_glass_stickers.php" class="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100">Glass/Wall</a>
+                <a href="order_transparent.php" class="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100">Transparent</a>
+                <a href="order_layout.php" class="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100">Layout Design</a>
+                <a href="order_reflectorized.php" class="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100">Reflectorized</a>
+                <a href="order_sintraboard.php" class="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100">Sintraboard</a>
+                <a href="order_standees.php" class="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100">Standees</a>
+                <a href="order_souvenirs.php" class="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100">Souvenirs</a>
+            </div>
+            <p class="mt-4"><a href="service_orders.php" class="text-indigo-600 font-medium hover:underline">View My Service Orders →</a></p>
+        </div>
+
         <!-- Quick Actions -->
-        <div class="ct-actions">
+        <div class="ct-actions" style="grid-template-columns: 1fr 1fr;">
             <a href="products.php" class="ct-action-card">
                 <div class="ct-action-icon">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:1.5rem;height:1.5rem;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
@@ -85,13 +104,6 @@ require_once __DIR__ . '/../includes/header.php';
                 </div>
                 <h3 class="ct-action-title">Track Orders</h3>
                 <p class="ct-action-desc">View your order history</p>
-            </a>
-            <a href="upload_design.php" class="ct-action-card">
-                <div class="ct-action-icon">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:1.5rem;height:1.5rem;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
-                </div>
-                <h3 class="ct-action-title">Upload Design</h3>
-                <p class="ct-action-desc">Submit your custom designs</p>
             </a>
         </div>
 
@@ -152,7 +164,7 @@ require_once __DIR__ . '/../includes/header.php';
                                     <td class="py-3"><?php echo status_badge($order['payment_status'], 'payment'); ?></td>
                                     <td class="py-3"><?php echo status_badge($order['status'], 'order'); ?></td>
                                     <td class="py-3">
-                                        <a href="order_details.php?id=<?php echo $order['order_id']; ?>" class="ct-view-link">View →</a>
+                                        <a href="order_details.php?id=<?php echo $order['order_id']; ?>" class="ct-view-link">View Order →</a>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>

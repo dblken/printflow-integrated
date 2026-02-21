@@ -11,6 +11,9 @@ define('DB_PASS', '122704');               // Change to your MySQL password
 define('DB_NAME', 'printflow');      // Database name
 define('BASE_URL', '/printflow');    // Base URL for the application
 
+// Disable strict reporting to handle errors gracefully via return values
+mysqli_report(MYSQLI_REPORT_OFF);
+
 // Create connection
 $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
 

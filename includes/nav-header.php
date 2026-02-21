@@ -53,21 +53,9 @@ $nav_header_class = $nav_header_class ?? 'bg-white/95 backdrop-blur-md shadow-lg
                             Products
                             <span class="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-primary-600 to-accent-purple group-hover:w-full transition-all duration-300"></span>
                         </a>
-                    <?php elseif (is_customer()): ?>
-                        <a href="<?php echo $base_url; ?>/customer/dashboard.php" class="nav-link text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200 relative group">
-                            Dashboard
-                            <span class="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-primary-600 to-accent-purple group-hover:w-full transition-all duration-300"></span>
-                        </a>
-                        <a href="<?php echo $base_url; ?>/customer/products.php" class="nav-link text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200 relative group">
-                            Products
-                            <span class="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-primary-600 to-accent-purple group-hover:w-full transition-all duration-300"></span>
-                        </a>
-                        <a href="<?php echo $base_url; ?>/customer/orders.php" class="nav-link text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200 relative group">
-                            My Orders
-                            <span class="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-primary-600 to-accent-purple group-hover:w-full transition-all duration-300"></span>
-                        </a>
                     <?php endif; ?>
                 <?php else: ?>
+
 <a href="<?php echo $url_index; ?>" class="nav-link text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200 relative group">
                             Home
                         <span class="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-primary-600 to-accent-purple group-hover:w-full transition-all duration-300"></span>
@@ -86,6 +74,27 @@ $nav_header_class = $nav_header_class ?? 'bg-white/95 backdrop-blur-md shadow-lg
             <!-- Right Side Icons -->
             <div class="flex items-center space-x-4">
                 <?php if ($is_logged_in): ?>
+                    
+                    <?php if (is_customer()): ?>
+                        <!-- Customer nav: moved to right side, icon-only with tooltip on hover -->
+                        <div class="hidden md:flex items-center space-x-3 mr-4">
+                            <a href="<?php echo $base_url; ?>/customer/dashboard.php" class="nav-link nav-icon-link text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200 relative group" title="Dashboard">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+                                <span class="nav-icon-tooltip">Dashboard</span>
+                            </a>
+                            <a href="<?php echo $base_url; ?>/customer/products.php" class="nav-link nav-icon-link text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200 relative group" title="Products">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                                <span class="nav-icon-tooltip">Shop</span>
+                            </a>
+                            <a href="<?php echo $base_url; ?>/customer/orders.php" class="nav-link nav-icon-link text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200 relative group" title="My Orders">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+                                <span class="nav-icon-tooltip">Orders</span>
+                            </a>
+
+                        </div>
+                        <div class="h-6 w-px bg-gray-200 hidden md:block"></div>
+                    <?php endif; ?>
+
                     <!-- Notifications -->
                     <a href="<?php echo $base_url; ?>/<?php echo strtolower($user_type); ?>/notifications.php" class="relative text-gray-700 hover:text-primary-600 transition-colors duration-200">
                         <svg class="w-6 h-6 hover:animate-bounce-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -98,12 +107,12 @@ $nav_header_class = $nav_header_class ?? 'bg-white/95 backdrop-blur-md shadow-lg
 
                     <!-- User Dropdown -->
                     <div class="relative" x-data="{ open: false }">
-                        <button @click="open = !open" class="flex items-center space-x-2 text-gray-700 hover:text-primary-600 transition-colors duration-200 group">
+                        <button @click="open = !open" class="nav-profile-btn flex items-center text-gray-700 hover:text-primary-600 transition-colors duration-200 group" style="gap:0;">
                             <div class="w-10 h-10 bg-gradient-to-br from-primary-500 to-accent-purple rounded-full flex items-center justify-center text-white font-bold shadow-md group-hover:shadow-glow transition-all duration-300">
                                 <?php echo $current_user ? strtoupper(substr($current_user['first_name'] ?? 'U', 0, 1)) : 'U'; ?>
                             </div>
-                            <span class="hidden md:block font-medium"><?php echo $current_user ? htmlspecialchars($current_user['first_name'] ?? 'User') : 'User'; ?></span>
-                            <svg class="w-4 h-4 transform transition-transform duration-200" :class="{'rotate-180': open}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <span class="nav-profile-name"><?php echo $current_user ? htmlspecialchars($current_user['first_name'] ?? 'User') : 'User'; ?></span>
+                            <svg class="nav-profile-chevron w-4 h-4" :class="{'rotate-180': open}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                             </svg>
                         </button>
@@ -117,12 +126,25 @@ $nav_header_class = $nav_header_class ?? 'bg-white/95 backdrop-blur-md shadow-lg
                              x-transition:leave-start="opacity-100 scale-100"
                              x-transition:leave-end="opacity-0 scale-95"
                              class="absolute right-0 mt-3 w-56 bg-white rounded-xl shadow-2xl py-2 z-50 border border-gray-100">
+                             
+                            <?php if (is_customer()): ?>
+                            <!-- Triggers global profile modal -->
+                            <a href="#" data-modal="profile" @click="open = false" class="flex items-center px-4 py-3 text-gray-700 hover:bg-primary-50 hover:text-primary-600 transition-colors duration-200">
+                                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                                </svg>
+                                Profile Settings
+                            </a>
+                            <?php else: ?>
+                            <!-- Admins/Staff keep normal link -->
                             <a href="<?php echo $base_url; ?>/<?php echo strtolower($user_type); ?>/profile.php" class="flex items-center px-4 py-3 text-gray-700 hover:bg-primary-50 hover:text-primary-600 transition-colors duration-200">
                                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
                                 </svg>
                                 Profile Settings
                             </a>
+                            <?php endif; ?>
+
                             <hr class="my-2 border-gray-100">
                             <a href="<?php echo $url_logout; ?>" data-logout-confirm class="flex items-center px-4 py-3 text-red-600 hover:bg-red-50 transition-colors duration-200">
                                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

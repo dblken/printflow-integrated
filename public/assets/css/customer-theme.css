@@ -453,6 +453,33 @@ body.customer-theme .ct-order-meta {
     font-size: 0.8125rem;
 }
 
+body.customer-theme .ct-order-meta.hidden {
+    display: none;
+}
+
+body.customer-theme .ct-toggle-btn {
+    background: none;
+    border: none;
+    color: var(--ct-purple);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0.75rem 0 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: color 0.2s;
+    width: fit-content;
+}
+
+body.customer-theme .ct-toggle-btn:hover {
+    color: var(--ct-purple-dark);
+}
+
+body.customer-theme .ct-toggle-btn svg {
+    transition: transform 0.3s;
+}
+
 body.customer-theme .ct-order-meta-label {
     color: var(--ct-text-muted);
     margin-bottom: 0.15rem;
@@ -475,6 +502,32 @@ body.customer-theme .ct-view-link {
 
 body.customer-theme .ct-view-link:hover {
     color: var(--ct-purple-dark);
+}
+
+/* List-level toggle */
+.order-hidden {
+    display: none !important;
+}
+
+#list-toggle-btn {
+    margin: 2rem auto;
+    display: block;
+    background: white;
+    border: 1px solid var(--ct-border);
+    color: var(--ct-text);
+    padding: 0.6rem 1.5rem;
+    border-radius: 2rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+#list-toggle-btn:hover {
+    border-color: var(--ct-purple);
+    color: var(--ct-purple);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 }
 
 /* ===== Links accent ===== */
@@ -624,4 +677,114 @@ body.customer-theme select.input-field {
     border-radius: 8px;
     font-size: 14px;
     font-weight: 600;
+}
+
+/* ===== Icon-only nav links (customer) ===== */
+body.customer-theme .nav-icon-link {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    padding: 6px 10px;
+    border-radius: 10px;
+    transition: background 0.2s, color 0.2s;
+}
+
+body.customer-theme .nav-icon-link svg {
+    width: 22px;
+    height: 22px;
+    display: block;
+    transition: color 0.2s, transform 0.2s;
+}
+
+body.customer-theme .nav-icon-link:hover svg {
+    transform: scale(1.12);
+    color: var(--ct-purple) !important;
+}
+
+body.customer-theme .nav-icon-link:hover {
+    background: var(--ct-purple-50);
+}
+
+/* Tooltip that appears below icon on hover */
+.nav-icon-tooltip {
+    position: absolute;
+    bottom: -28px;
+    left: 50%;
+    transform: translateX(-50%) translateY(4px);
+    background: #1e293b;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    padding: 3px 9px;
+    border-radius: 6px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    z-index: 99;
+}
+
+.nav-icon-tooltip::before {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 4px solid transparent;
+    border-bottom-color: #1e293b;
+    border-top: none;
+}
+
+body.customer-theme .nav-icon-link:hover .nav-icon-tooltip {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* Active page highlight */
+body.customer-theme .nav-icon-link.active,
+body.customer-theme .nav-icon-link.active:hover {
+    background: var(--ct-purple-100);
+    color: var(--ct-purple) !important;
+}
+
+/* ===== Avatar-only profile (customer) ===== */
+body.customer-theme .nav-profile-btn {
+    position: relative;
+    border-radius: 99px;
+    padding: 2px;
+    background: transparent;
+    border: none;
+    transition: background 0.2s;
+}
+
+body.customer-theme .nav-profile-btn:hover {
+    background: var(--ct-purple-50);
+}
+
+body.customer-theme .nav-profile-name,
+body.customer-theme .nav-profile-chevron {
+    overflow: hidden;
+    max-width: 0;
+    opacity: 0;
+    white-space: nowrap;
+    transition: max-width 0.3s ease, opacity 0.25s ease, margin 0.3s ease;
+    display: inline-block;
+    vertical-align: middle;
+    font-weight: 600;
+    font-size: 0.875rem;
+    margin-left: 0;
+}
+
+body.customer-theme .nav-profile-btn:hover .nav-profile-name {
+    max-width: 120px;
+    opacity: 1;
+    margin-left: 8px;
+}
+
+body.customer-theme .nav-profile-btn:hover .nav-profile-chevron {
+    max-width: 20px;
+    opacity: 1;
+    margin-left: 4px;
 }

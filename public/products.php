@@ -16,12 +16,6 @@ $sql = "SELECT * FROM products WHERE status = 'Activated'";
 $params = [];
 $types = '';
 
-if (!empty($category)) {
-    $sql .= " AND category = ?";
-    $params[] = $category;
-    $types .= 's';
-}
-
 if (!empty($search)) {
     $sql .= " AND (name LIKE ? OR description LIKE ?)";
     $search_term = '%' . $search . '%';
@@ -33,9 +27,6 @@ if (!empty($search)) {
 $sql .= " ORDER BY name ASC";
 
 $products = db_query($sql, $types, $params);
-
-// Get all categories
-$categories = db_query("SELECT DISTINCT category FROM products WHERE status = 'Activated' ORDER BY category ASC");
 
 $page_title = 'Products - PrintFlow';
 require_once __DIR__ . '/../includes/header.php';
@@ -51,7 +42,7 @@ require_once __DIR__ . '/../includes/header.php';
 
         <!-- Filters -->
         <div class="card mb-6">
-            <form method="GET" action="" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <form method="GET" action="" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <!-- Search -->
                 <div>
                     <label for="search" class="block text-sm font-medium text-gray-700 mb-2">Search</label>
@@ -65,22 +56,9 @@ require_once __DIR__ . '/../includes/header.php';
                     >
                 </div>
 
-                <!-- Category Filter -->
-                <div>
-                    <label for="category" class="block text-sm font-medium text-gray-700 mb-2">Category</label>
-                    <select id="category" name="category" class="input-field">
-                        <option value="">All Categories</option>
-                        <?php foreach ($categories as $cat): ?>
-                            <option value="<?php echo htmlspecialchars($cat['category']); ?>" <?php echo $category === $cat['category'] ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($cat['category']); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
                 <!-- Filter Button -->
                 <div class="flex items-end">
-                    <button type="submit" class="btn-primary w-full">Apply Filters</button>
+                    <button type="submit" class="btn-primary w-full">Search Products</button>
                 </div>
             </form>
         </div>
@@ -103,9 +81,6 @@ require_once __DIR__ . '/../includes/header.php';
 
                         <!-- Product Info -->
                         <div>
-                            <div class="mb-2">
-                                <span class="badge bg-indigo-100 text-indigo-800"><?php echo htmlspecialchars($product['category']); ?></span>
-                            </div>
                             <h3 class="text-lg font-bold text-gray-900 mb-2"><?php echo htmlspecialchars($product['name']); ?></h3>
                             <p class="text-gray-600 text-sm mb-4 line-clamp-2"><?php echo htmlspecialchars($product['description']); ?></p>
                             
@@ -119,12 +94,12 @@ require_once __DIR__ . '/../includes/header.php';
                             </div>
 
                             <?php if (is_logged_in() && is_customer()): ?>
-                                <a href="/printflow/customer/order.php?product_id=<?php echo $product['product_id']; ?>" class="btn-primary w-full mt-4 block text-center">
-                                    Order Now
+                                <a href="/printflow/customer/order_create.php?product_id=<?php echo $product['product_id']; ?>&buy_now=1" class="btn-primary w-full mt-4 block text-center">
+                                    Buy Now
                                 </a>
                             <?php else: ?>
-                                <a href="#" data-auth-modal="login" class="btn-secondary w-full mt-4 block text-center">
-                                    Login to Order
+                                <a href="#" data-auth-modal="login" class="btn-primary w-full mt-4 block text-center">
+                                    Login to Buy Now
                                 </a>
                             <?php endif; ?>
                         </div>

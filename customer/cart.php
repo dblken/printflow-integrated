@@ -40,6 +40,34 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="container mx-auto px-4" style="max-width:1100px;">
         <h1 class="ct-page-title">Shopping Cart</h1>
 
+        <?php 
+        $customer_id = get_user_id();
+        $cancel_count = get_customer_cancel_count($customer_id);
+        $is_restricted = is_customer_restricted($customer_id);
+        
+        if ($is_restricted): ?>
+            <div style="background-color: #fef2f2; border: 1px solid #fee2e2; border-radius: 12px; padding: 1.25rem; margin-bottom: 2rem; color: #b91c1c; font-size: 0.95rem; display: flex; align-items: center; gap: 0.75rem;">
+                <span style="font-size: 1.5rem;">🚫</span>
+                <div><strong>Account Restricted:</strong> You are currently blocked from placing new orders due to excessive cancellations (7+). Please contact support.</div>
+            </div>
+        <?php elseif ($cancel_count >= 3): ?>
+            <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 1.25rem; margin-bottom: 2rem; display: flex; gap: 0.75rem; align-items: flex-start;">
+                <span style="font-size: 1.5rem;">⚠️</span>
+                <div>
+                    <h3 style="color: #92400e; font-weight: 700; font-size: 0.95rem; margin-bottom: 0.25rem;">Shopping Experience Warning</h3>
+                    <p style="color: #b45309; font-size: 0.85rem; line-height: 1.5;">
+                        You have <strong><?php echo $cancel_count; ?></strong> recent cancellations. 
+                        <?php if ($cancel_count >= 4): ?>
+                            Because you have 4 or more cancellations, <strong>'Pay Later' orders will require a 50% downpayment</strong> to proceed.
+                        <?php else: ?>
+                            Excessive cancellations may lead to payment restrictions or account suspension.
+                        <?php endif; ?>
+                        Complete a successful order to reset this counter!
+                    </p>
+                </div>
+            </div>
+        <?php endif; ?>
+
         <?php if (empty($cart_items)): ?>
             <div class="ct-empty">
                 <div class="ct-empty-icon">🛒</div>
@@ -93,7 +121,11 @@ require_once __DIR__ . '/../includes/header.php';
                         <div style="text-align:right;">
                             <div style="font-size:0.875rem; color:#6b7280; margin-bottom:0.25rem;">Subtotal</div>
                             <div style="font-size:1.5rem; font-weight:700; color:#1f2937; margin-bottom:1rem;"><?php echo format_currency($total); ?></div>
-                            <a href="checkout.php" class="btn-primary" style="padding:0.75rem 2rem;">Proceed to Checkout</a>
+                            <?php if ($is_restricted): ?>
+                                <button type="button" class="btn-primary" style="padding:0.75rem 2rem; opacity:0.5; cursor:not-allowed;" disabled>Proceed to Checkout</button>
+                            <?php else: ?>
+                                <a href="checkout.php" class="btn-primary" style="padding:0.75rem 2rem;">Proceed to Checkout</a>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>

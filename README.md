@@ -1,4 +1,4 @@
-# PrintFlow - Progressive Web App
+
 
 A comprehensive pickup-only printing shop management system built with PHP, MySQL, and Tailwind CSS.
 

@@ -19,14 +19,8 @@ if (isset($_GET['mark_read'])) {
     redirect('/printflow/staff/notifications.php');
 }
 
-// Mark all as read
-if (isset($_GET['mark_all_read'])) {
-    db_execute("UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0", 'i', [$staff_id]);
-    redirect('/printflow/staff/notifications.php');
-}
-
 // Get notifications
-$notifications = db_query("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100", 'i', [$staff_id]);
+$notifications = db_query("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50", 'i', [$staff_id]);
 
 $page_title = 'Notifications - Staff';
 ?>
@@ -53,11 +47,8 @@ $page_title = 'Notifications - Staff';
 
     <!-- Main Content -->
     <div class="main-content">
-        <header style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+        <header>
             <h1 class="page-title">Notifications</h1>
-            <?php if (!empty($notifications) && array_search(0, array_column($notifications, 'is_read')) !== false): ?>
-                <a href="?mark_all_read=1" class="btn" style="font-size:13px; background:#f3f4f6; color:#4b5563;">Mark all as read</a>
-            <?php endif; ?>
         </header>
 
         <main>
@@ -67,44 +58,22 @@ $page_title = 'Notifications - Staff';
                     <p style="color:#6b7280; font-size:14px;">No notifications yet</p>
                 </div>
             <?php else: ?>
-                <div id="notif-container">
-                    <?php foreach ($notifications as $index => $notif): ?>
-                        <div class="notif-item <?php echo $notif['is_read'] ? '' : 'notif-unread'; ?> <?php echo $index >= 10 ? 'notif-hidden' : ''; ?>" style="<?php echo $index >= 10 ? 'display:none;' : ''; ?>">
-                            <div style="display:flex; align-items:flex-start; justify-content:space-between;">
-                                <div>
-                                    <?php if (!$notif['is_read']): ?>
-                                        <span class="notif-badge">NEW</span>
-                                    <?php endif; ?>
-                                    <p style="font-weight:500; font-size:14px; color:#1f2937;"><?php echo htmlspecialchars($notif['message']); ?></p>
-                                    <p style="font-size:12px; color:#9ca3af; margin-top:4px;"><?php echo format_datetime($notif['created_at']); ?></p>
-                                </div>
+                <?php foreach ($notifications as $notif): ?>
+                    <div class="notif-item <?php echo $notif['is_read'] ? '' : 'notif-unread'; ?>">
+                        <div style="display:flex; align-items:flex-start; justify-content:space-between;">
+                            <div>
                                 <?php if (!$notif['is_read']): ?>
-                                    <a href="?mark_read=<?php echo $notif['notification_id']; ?>" style="font-size:12px; color:#3b82f6; font-weight:500; text-decoration:none; white-space:nowrap;">Mark Read</a>
+                                    <span class="notif-badge">NEW</span>
                                 <?php endif; ?>
+                                <p style="font-weight:500; font-size:14px; color:#1f2937;"><?php echo htmlspecialchars($notif['message']); ?></p>
+                                <p style="font-size:12px; color:#9ca3af; margin-top:4px;"><?php echo format_datetime($notif['created_at']); ?></p>
                             </div>
+                            <?php if (!$notif['is_read']): ?>
+                                <a href="?mark_read=<?php echo $notif['notification_id']; ?>" style="font-size:12px; color:#3b82f6; font-weight:500; text-decoration:none; white-space:nowrap;">Mark Read</a>
+                            <?php endif; ?>
                         </div>
-                    <?php endforeach; ?>
-                </div>
-
-                <?php if (count($notifications) > 10): ?>
-                    <div style="text-align:center; margin-top:20px;">
-                        <button id="toggle-notifs" class="btn" style="background:#fff; border:1px solid #d1d5db; color:#374151;">See More</button>
                     </div>
-
-                    <script>
-                        const toggleBtn = document.getElementById('toggle-notifs');
-                        const hiddenNotifs = document.querySelectorAll('.notif-hidden');
-                        let isExpanded = false;
-
-                        toggleBtn.addEventListener('click', () => {
-                            isExpanded = !isExpanded;
-                            hiddenNotifs.forEach(el => {
-                                el.style.display = isExpanded ? 'block' : 'none';
-                            });
-                            toggleBtn.textContent = isExpanded ? 'See Less' : 'See More';
-                        });
-                    </script>
-                <?php endif; ?>
+                <?php endforeach; ?>
             <?php endif; ?>
         </main>
     </div>

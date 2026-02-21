@@ -1,6 +1,6 @@
 <?php
 // Get current page filename
-$current_page = basename($_SERVER['PHP_SELF']);
+$nav_current_file = basename($_SERVER['PHP_SELF']);
 $user_name = $_SESSION['user_name'] ?? 'Staff';
 $user_initial = strtoupper(substr($user_name, 0, 1));
 $is_pending = isset($_SESSION['user_status']) && $_SESSION['user_status'] === 'Pending';
@@ -37,25 +37,31 @@ $is_pending = isset($_SESSION['user_status']) && $_SESSION['user_status'] === 'P
         <!-- Operations -->
         <div class="nav-section">
             <div class="nav-section-title">Operations</div>
-            <a href="<?php echo BASE_URL; ?>/staff/dashboard.php" class="nav-item <?php echo $current_page === 'dashboard.php' ? 'active' : ''; ?>">
+            <a href="<?php echo BASE_URL; ?>/staff/dashboard.php" class="nav-item <?php echo $nav_current_file === 'dashboard.php' ? 'active' : ''; ?>">
                 <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
                 </svg>
                 Dashboard
             </a>
-            <a href="<?php echo BASE_URL; ?>/staff/orders.php" class="nav-item <?php echo in_array($current_page, ['orders.php', 'order_details.php']) ? 'active' : ''; ?>">
+            <a href="<?php echo BASE_URL; ?>/staff/orders.php" class="nav-item <?php echo in_array($nav_current_file, ['orders.php', 'order_details.php']) ? 'active' : ''; ?>">
                 <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                 </svg>
                 Orders
             </a>
-            <a href="<?php echo BASE_URL; ?>/staff/products.php" class="nav-item <?php echo $current_page === 'products.php' ? 'active' : ''; ?>">
+            <a href="<?php echo BASE_URL; ?>/staff/service_orders.php" class="nav-item <?php echo in_array($nav_current_file, ['service_orders.php', 'service_order_details.php']) ? 'active' : ''; ?>">
+                <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                </svg>
+                Service Orders
+            </a>
+            <a href="<?php echo BASE_URL; ?>/staff/products.php" class="nav-item <?php echo $nav_current_file === 'products.php' ? 'active' : ''; ?>">
                 <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
                 </svg>
                 Products
             </a>
-            <a href="<?php echo BASE_URL; ?>/staff/reports.php" class="nav-item <?php echo $current_page === 'reports.php' ? 'active' : ''; ?>">
+            <a href="<?php echo BASE_URL; ?>/staff/reports.php" class="nav-item <?php echo $nav_current_file === 'reports.php' ? 'active' : ''; ?>">
                 <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                 </svg>
@@ -66,7 +72,7 @@ $is_pending = isset($_SESSION['user_status']) && $_SESSION['user_status'] === 'P
         <!-- System -->
         <div class="nav-section">
             <div class="nav-section-title">System</div>
-            <a href="<?php echo BASE_URL; ?>/staff/notifications.php" class="nav-item <?php echo $current_page === 'notifications.php' ? 'active' : ''; ?>">
+            <a href="<?php echo BASE_URL; ?>/staff/notifications.php" class="nav-item <?php echo $nav_current_file === 'notifications.php' ? 'active' : ''; ?>">
                 <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
                 </svg>

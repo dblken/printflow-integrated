@@ -311,9 +311,14 @@ function status_badge($status, $type = 'order') {
     $colors = [
         'order' => [
             'Pending' => 'bg-yellow-100 text-yellow-800',
+            'Pending Review' => 'bg-orange-100 text-orange-800',
+            'For Revision' => 'bg-blue-100 text-blue-800',
+            'Pending Approval' => 'bg-indigo-100 text-indigo-800',
             'Processing' => 'bg-blue-100 text-blue-800',
+            'In Production' => 'bg-blue-100 text-blue-800',
+            'Printing' => 'bg-purple-100 text-purple-800',
             'Ready for Pickup' => 'bg-green-100 text-green-800',
-            'Completed' => 'bg-gray-100 text-gray-800',
+            'Completed' => 'bg-green-200 text-green-900',
             'Cancelled' => 'bg-red-100 text-red-800'
         ],
         'payment' => [
@@ -331,6 +336,74 @@ function status_badge($status, $type = 'order') {
     $color = $colors[$type][$status] ?? 'bg-gray-100 text-gray-800';
     
     return "<span class='px-2 py-1 text-xs font-semibold rounded-full {$color}'>" . htmlspecialchars($status) . "</span>";
+}
+
+/**
+ * Check if a customer can cancel an order
+ * Rules: Status must be 'Pending' AND within 60 minutes of placement
+ */
+function can_customer_cancel_order($order) {
+    if (($order['status'] ?? '') !== 'Pending') return false;
+    
+    $order_time = strtotime($order['order_date']);
+    $now = time();
+    $diff_minutes = ($now - $order_time) / 60;
+    
+    return $diff_minutes <= 60;
+}
+
+/**
+ * Get customer cancellation count
+ */
+function get_customer_cancel_count($customer_id) {
+    $result = db_query("SELECT cancel_count FROM customers WHERE customer_id = ?", 'i', [$customer_id]);
+    return $result[0]['cancel_count'] ?? 0;
+}
+
+/**
+ * Get customer restriction status
+ */
+function is_customer_restricted($customer_id) {
+    $result = db_query("SELECT is_restricted FROM customers WHERE customer_id = ?", 'i', [$customer_id]);
+    return (bool)($result[0]['is_restricted'] ?? false);
+}
+
+/**
+ * Update order status with side-effects (Notif, Reset Cancel Count)
+ */
+function update_order_status($order_id, $new_status, $user_id = null, $reason = null) {
+    $order_result = db_query("SELECT * FROM orders WHERE order_id = ?", 'i', [$order_id]);
+    if (empty($order_result)) return false;
+    $order = $order_result[0];
+    
+    // Update status
+    if ($new_status === 'Cancelled') {
+        $success = db_execute(
+            "UPDATE orders SET status = 'Cancelled', cancelled_by = 'Staff', cancel_reason = ?, cancelled_at = NOW() WHERE order_id = ?",
+            'si', [$reason, $order_id]
+        );
+    } else {
+        $success = db_execute("UPDATE orders SET status = ? WHERE order_id = ?", 'si', [$new_status, $order_id]);
+    }
+
+    if ($success) {
+        // Production Start Log
+        if ($new_status === 'In Production') {
+            db_execute("UPDATE orders SET production_started_at = NOW() WHERE order_id = ?", 'i', [$order_id]);
+        }
+
+        // AUTO-RESET LOGIC: Every transaction success resets the cancel count
+        if ($new_status === 'Completed') {
+            // Only reset if NOT already permanently blocked (7+)
+            $cust_id = $order['customer_id'];
+            $cust_data = db_query("SELECT cancel_count FROM customers WHERE customer_id = ?", 'i', [$cust_id]);
+            if (!empty($cust_data) && $cust_data[0]['cancel_count'] < 7) {
+                db_execute("UPDATE customers SET cancel_count = 0 WHERE customer_id = ?", 'i', [$cust_id]);
+            }
+        }
+    }
+    
+    return $success;
 }
 
 /**
@@ -374,6 +447,8 @@ function get_unread_notification_count($user_id, $role) {
  * @return string HTML
  */
 function get_pagination_links($current_page, $total_pages, $params = []) {
+    $current_page = (int)$current_page;
+    $total_pages = (int)$total_pages;
     if ($total_pages <= 1) return '';
     
     $url = $_SERVER['PHP_SELF'];

@@ -1,16 +1,11 @@
 <?php
-require_once __DIR__ . '/includes/db.php';
-
-$tables = ['orders', 'products', 'materials', 'users', 'customers'];
-foreach ($tables as $table) {
-    echo "--- $table ---\n";
-    $res = $conn->query("DESCRIBE $table");
-    if ($res) {
-        while ($row = $res->fetch_assoc()) {
-            echo "{$row['Field']} | {$row['Type']} | {$row['Null']} | {$row['Default']}\n";
-        }
-    } else {
-        echo "Error describing $table: " . $conn->error . "\n";
-    }
-    echo "\n";
+require 'includes/db.php';
+$res = $conn->query('DESCRIBE orders');
+while($row = $res->fetch_assoc()) {
+    echo "Field: " . $row['Field'] . " | Type: " . $row['Type'] . " | Null: " . $row['Null'] . " | Key: " . $row['Key'] . " | Default: " . $row['Default'] . "\n";
+}
+echo "\nDESCRIBE order_items:\n";
+$res = $conn->query('DESCRIBE order_items');
+while($row = $res->fetch_assoc()) {
+    echo "Field: " . $row['Field'] . " | Type: " . $row['Type'] . " | Null: " . $row['Null'] . " | Key: " . $row['Key'] . " | Default: " . $row['Default'] . "\n";
 }

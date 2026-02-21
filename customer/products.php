@@ -18,12 +18,6 @@ $sql = "SELECT * FROM products WHERE status = 'Activated'";
 $params = [];
 $types = '';
 
-if (!empty($category)) {
-    $sql .= " AND category = ?";
-    $params[] = $category;
-    $types .= 's';
-}
-
 if (!empty($search)) {
     $sql .= " AND (name LIKE ? OR description LIKE ?)";
     $search_term = '%' . $search . '%';
@@ -42,12 +36,6 @@ $count_sql = "SELECT COUNT(*) as total FROM products WHERE status = 'Activated'"
 $count_params = [];
 $count_types = '';
 
-if (!empty($category)) {
-    $count_sql .= " AND category = ?";
-    $count_params[] = $category;
-    $count_types .= 's';
-}
-
 if (!empty($search)) {
     $count_sql .= " AND (name LIKE ? OR description LIKE ?)";
     $count_params[] = '%' . $search . '%';
@@ -65,7 +53,6 @@ $params[] = $offset;
 $types .= 'ii';
 
 $products = db_query($sql, $types, $params);
-$categories = db_query("SELECT DISTINCT category FROM products WHERE status = 'Activated' ORDER BY category ASC");
 
 $page_title = 'Products - PrintFlow';
 $use_customer_css = true;
@@ -83,17 +70,6 @@ require_once __DIR__ . '/../includes/header.php';
                     <label style="display:block; font-size:0.75rem; font-weight:600; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:0.4rem;">Search</label>
                     <input type="text" name="search" class="input-field" placeholder="Search products..." value="<?php echo htmlspecialchars($search); ?>">
                 </div>
-                <div>
-                    <label style="display:block; font-size:0.75rem; font-weight:600; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:0.4rem;">Category</label>
-                    <select name="category" class="input-field">
-                        <option value="">All Categories</option>
-                        <?php foreach ($categories as $cat): ?>
-                            <option value="<?php echo htmlspecialchars($cat['category']); ?>" <?php echo $category === $cat['category'] ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($cat['category']); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
                 <button type="submit" class="btn-primary" style="height:fit-content;">Apply</button>
             </form>
             
@@ -109,32 +85,62 @@ require_once __DIR__ . '/../includes/header.php';
                 <p>No products found</p>
             </div>
         <?php else: ?>
-            <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:1.5rem;">
+            <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:1rem;">
                 <?php foreach ($products as $product): ?>
-                    <div class="ct-product-card">
+                    <div class="ct-product-card floating-card">
                         <div class="ct-product-img">
                             <span>📦</span>
                         </div>
                         <div class="ct-product-body">
-                            <span class="ct-product-category"><?php echo htmlspecialchars($product['category']); ?></span>
-                            <h3 class="ct-product-name"><?php echo htmlspecialchars($product['name']); ?></h3>
-                            <p class="ct-product-desc"><?php echo htmlspecialchars(substr($product['description'], 0, 100)); ?>...</p>
+                            <h3 class="ct-product-name" style="font-size: 0.9rem;"><?php echo htmlspecialchars($product['name']); ?></h3>
+                            <p class="ct-product-desc" style="display: none;"><?php echo htmlspecialchars(substr($product['description'], 0, 100)); ?>...</p>
 
-                            <p class="ct-product-price"><?php echo format_currency($product['price']); ?></p>
+                            <p class="ct-product-price" style="font-size: 1rem; margin-bottom: 0.5rem;"><?php echo format_currency($product['price']); ?></p>
                             <?php if ($product['stock_quantity'] > 0): ?>
-                                <span class="ct-product-stock in-stock">✓ In Stock</span>
+                                <span class="ct-product-stock in-stock" style="font-size: 0.7rem;">✓ In Stock</span>
                             <?php else: ?>
-                                <span class="ct-product-stock out-stock">✕ Out of Stock</span>
+                                <span class="ct-product-stock out-stock" style="font-size: 0.7rem;">✕ Out of Stock</span>
                             <?php endif; ?>
 
-                            <div class="ct-product-actions">
-                                <a href="order_create.php?product_id=<?php echo $product['product_id']; ?>" class="ct-more-info">MORE INFO ›</a>
-                                <a href="order_create.php?product_id=<?php echo $product['product_id']; ?>" class="btn-primary" style="padding:0.5rem 1.25rem; font-size:0.75rem;">ADD TO CART</a>
+                            <div class="ct-product-actions" style="margin-top:1rem; display:flex; flex-direction:column; gap:0.5rem;">
+                                <a href="order_create.php?product_id=<?php echo $product['product_id']; ?>&buy_now=1" class="btn-primary" style="width:100%; justify-content:center; padding:0.5rem; font-size: 0.8rem;">BUY NOW</a>
+                                <div style="display:flex; gap:0.5rem; align-items:center; justify-content:space-between;">
+                                    <a href="order_create.php?product_id=<?php echo $product['product_id']; ?>" class="btn-secondary" style="width: 100%; background:#fff; border:1px solid #d1d5db; padding:0.4rem; font-size:0.75rem; border-radius:6px; text-decoration:none; color:#374151; text-align: center;">ADD TO CART</a>
+                                </div>
                             </div>
                         </div>
                     </div>
                 <?php endforeach; ?>
             </div>
+            
+            <style>
+                @media (max-width: 1100px) {
+                    div[style*="grid-template-columns:repeat(5, 1fr)"] {
+                        grid-template-columns: repeat(3, 1fr) !important;
+                    }
+                }
+                @media (max-width: 768px) {
+                    div[style*="grid-template-columns:repeat(5, 1fr)"] {
+                        grid-template-columns: repeat(2, 1fr) !important;
+                    }
+                }
+                @media (max-width: 480px) {
+                    div[style*="grid-template-columns:repeat(5, 1fr)"] {
+                        grid-template-columns: repeat(1, 1fr) !important;
+                    }
+                }
+                .floating-card {
+                    transition: all 0.3s ease;
+                    border: 1px solid #f3f4f6;
+                    border-radius: 12px;
+                    overflow: hidden;
+                    background: white;
+                }
+                .floating-card:hover {
+                    transform: translateY(-5px);
+                    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+                }
+            </style>
 
             <!-- Pagination -->
             <div class="mt-8">

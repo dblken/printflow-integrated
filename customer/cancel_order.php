@@ -20,22 +20,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_cancel'])) {
     $details = $_POST['details'] ?? '';
 
     // Verify order ownership and status
-    $order = db_query("SELECT status FROM orders WHERE order_id = ? AND customer_id = ?", 'ii', [$order_id, $customer_id]);
+    $order_result = db_query("SELECT * FROM orders WHERE order_id = ? AND customer_id = ?", 'ii', [$order_id, $customer_id]);
 
-    if (empty($order)) {
+    if (empty($order_result)) {
         redirect('orders.php');
     }
+    $order = $order_result[0];
 
-    if ($order[0]['status'] !== 'Pending') {
-        $_SESSION['error'] = "Order #{$order_id} cannot be cancelled as it is already being processed.";
+    // STRICT RULE: Only Pending AND within 60 minutes
+    if (!can_customer_cancel_order($order)) {
+        $_SESSION['error'] = "Order #{$order_id} can no longer be cancelled (outside 60-min window or production started).";
         redirect("order_details.php?id=$order_id");
     }
 
     // Update order status
-    $sql = "UPDATE orders SET status = 'Cancelled', cancellation_reason = ?, cancellation_details = ? WHERE order_id = ?";
-    $success = db_execute($sql, 'ssi', [$reason, $details, $order_id]);
+    $sql = "UPDATE orders SET status = 'Cancelled', cancelled_by = 'Customer', cancel_reason = ?, cancelled_at = NOW() WHERE order_id = ?";
+    $success = db_execute($sql, 'si', [$reason, $order_id]);
 
     if ($success) {
+        // Increment Customer Cancel Count
+        db_execute("UPDATE customers SET cancel_count = cancel_count + 1 WHERE customer_id = ?", 'i', [$customer_id]);
+        
+        // Check for 7-cancel permanent block
+        $new_count_result = db_query("SELECT cancel_count FROM customers WHERE customer_id = ?", 'i', [$customer_id]);
+        $new_count = $new_count_result[0]['cancel_count'] ?? 0;
+        
+        if ($new_count >= 7) {
+            db_execute("UPDATE customers SET is_restricted = 1 WHERE customer_id = ?", 'i', [$customer_id]);
+            log_activity($customer_id, 'Account Restricted', "Customer reached $new_count cancellations and is now permanently blocked.");
+        }
+
         // Notify Customer
         create_notification($customer_id, 'Customer', "Order #{$order_id} has been cancelled.", 'Order', false, false);
 
@@ -45,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_cancel'])) {
             create_notification($staff['user_id'], 'Staff', "Order #{$order_id} was cancelled by the customer. Reason: $reason", 'Order', false, false);
         }
 
-        $_SESSION['success'] = "Order #{$order_id} has been successfully cancelled.";
+        $_SESSION['success'] = "Order #{$order_id} has been successfully cancelled. The shop staff has been notified.";
     } else {
         $_SESSION['error'] = "Failed to cancel order. Please try again.";
     }
