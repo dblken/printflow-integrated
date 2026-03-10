@@ -45,6 +45,204 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
 </section>
 
+<!-- Homepage Product Showcase - Adidas-style image grid -->
+<section id="lp-showcase" class="bg-white py-16 sm:py-20 lg:py-24">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-24">
+
+        <!-- Row 1 – DECALS & STICKERS -->
+        <div class="space-y-8">
+            <header>
+                <h2 class="text-2xl sm:text-3xl font-black tracking-widest text-gray-900 uppercase">
+                    DECALS & STICKERS
+                </h2>
+            </header>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+                <?php
+                $stickerCards = [
+                    ['img' => 'decals-motor.jpg', 'subtitle' => 'Print/Cut', 'title' => 'Motor Decals', 'desc' => 'High-quality vinyl decals for motorcycles and helmets.'],
+                    ['img' => 'decals-reflectorized.jpg', 'subtitle' => 'Reflectorized', 'title' => 'Subdivision Stickers', 'desc' => 'Night-visible reflective stickers for security and safety.'],
+                    ['img' => 'decals-transparent.jpg', 'subtitle' => 'Transparent', 'title' => 'Clear Stickers', 'desc' => 'Seamless transparent stickers for glass and bottles.'],
+                    ['img' => 'decals-glass.jpg', 'subtitle' => 'Glass & Wall', 'title' => 'Frosted Designs', 'desc' => 'Professional frosted and wall stickers for interiors.']
+                ];
+                foreach ($stickerCards as $card):
+                ?>
+                <article class="group relative overflow-hidden bg-gray-100 cursor-pointer">
+                    <div class="relative aspect-[4/5] overflow-hidden">
+                        <img src="/printflow/public/assets/images/showcase/<?php echo $card['img']; ?>" 
+                             alt="<?php echo htmlspecialchars($card['title']); ?>"
+                             class="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-110">
+                        
+                        <!-- Hover Overlay -->
+                        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-500 ease-in-out flex flex-col justify-end p-6 text-white">
+                            <p class="text-[10px] font-bold tracking-[0.3em] uppercase mb-1 text-gray-200"><?php echo htmlspecialchars($card['subtitle']); ?></p>
+                            <h3 class="text-lg font-bold mb-2"><?php echo htmlspecialchars($card['title']); ?></h3>
+                            <p class="text-xs text-gray-100 mb-4 line-clamp-2"><?php echo htmlspecialchars($card['desc']); ?></p>
+                            <span class="inline-block w-max border-b-2 border-white pb-1 text-[11px] font-black uppercase tracking-widest hover:text-gray-200 transition-colors">
+                                View Samples
+                            </span>
+                        </div>
+                    </div>
+                </article>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <!-- Row 2 – T-SHIRT PRINTING -->
+        <div class="space-y-8">
+            <header>
+                <h2 class="text-2xl sm:text-3xl font-black tracking-widest text-gray-900 uppercase">
+                    T-SHIRT PRINTING
+                </h2>
+            </header>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+                <?php
+                $shirtCards = [
+                    ['img' => 'tshirts-model.jpg', 'subtitle' => 'Premium Print', 'title' => 'Lifestyle Tees', 'desc' => 'High-quality custom prints on premium cotton shirts.'],
+                    ['img' => 'tshirts-texture.jpg', 'subtitle' => 'Detail-Oriented', 'title' => 'Print Texture', 'desc' => 'Explore the durability and feel of our unique printing methods.'],
+                    ['img' => 'tshirts-colors.jpg', 'subtitle' => 'Vibrant Choices', 'title' => 'Color Spectrum', 'desc' => 'A wide range of fabric colors for your custom brand.'],
+                    ['img' => 'tshirts-layout.jpg', 'subtitle' => 'Custom Layout', 'title' => 'Design Mockups', 'desc' => 'Professional layout services for your apparel business.']
+                ];
+                foreach ($shirtCards as $card):
+                ?>
+                <article class="group relative overflow-hidden bg-gray-100 cursor-pointer">
+                    <div class="relative aspect-[4/5] overflow-hidden">
+                        <img src="/printflow/public/assets/images/showcase/<?php echo $card['img']; ?>" 
+                             alt="<?php echo htmlspecialchars($card['title']); ?>"
+                             class="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-110">
+                        
+                        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-500 ease-in-out flex flex-col justify-end p-6 text-white">
+                            <p class="text-[10px] font-bold tracking-[0.3em] uppercase mb-1 text-gray-200"><?php echo htmlspecialchars($card['subtitle']); ?></p>
+                            <h3 class="text-lg font-bold mb-2"><?php echo htmlspecialchars($card['title']); ?></h3>
+                            <p class="text-xs text-gray-100 mb-4 line-clamp-2"><?php echo htmlspecialchars($card['desc']); ?></p>
+                            <span class="inline-block w-max border-b-2 border-white pb-1 text-[11px] font-black uppercase tracking-widest">
+                                See Designs
+                            </span>
+                        </div>
+                    </div>
+                </article>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <!-- Row 3 – TARPAULIN PRINTING -->
+        <div class="space-y-8">
+            <header>
+                <h2 class="text-2xl sm:text-3xl font-black tracking-widest text-gray-900 uppercase">
+                    TARPAULIN PRINTING
+                </h2>
+            </header>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+                <?php
+                $tarpCards = [
+                    ['img' => 'tarp-birthday.jpg', 'subtitle' => 'Celebrations', 'title' => 'Birthday Banners', 'desc' => 'Make every moment special with high-quality photo backdrops.'],
+                    ['img' => 'tarp-business.jpg', 'subtitle' => 'Marketing', 'title' => 'Business Tarps', 'desc' => 'Promote your brand with eye-catching outdoor signage.'],
+                    ['img' => 'tarp-event.jpg', 'subtitle' => 'Corporate', 'title' => 'Event Backdrop', 'desc' => 'Professional set-ups for conferences and company events.'],
+                    ['img' => 'tarp-outdoor.jpg', 'subtitle' => 'Durable', 'title' => 'Outdoor Signage', 'desc' => 'Weather-resistant prints built to withstand the elements.']
+                ];
+                foreach ($tarpCards as $card):
+                ?>
+                <article class="group relative overflow-hidden bg-gray-100 cursor-pointer">
+                    <div class="relative aspect-[4/5] overflow-hidden">
+                        <img src="/printflow/public/assets/images/showcase/<?php echo $card['img']; ?>" 
+                             alt="<?php echo htmlspecialchars($card['title']); ?>"
+                             class="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-110">
+                        
+                        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-500 ease-in-out flex flex-col justify-end p-6 text-white">
+                            <p class="text-[10px] font-bold tracking-[0.3em] uppercase mb-1 text-gray-200"><?php echo htmlspecialchars($card['subtitle']); ?></p>
+                            <h3 class="text-lg font-bold mb-2"><?php echo htmlspecialchars($card['title']); ?></h3>
+                            <p class="text-xs text-gray-100 mb-4 line-clamp-2"><?php echo htmlspecialchars($card['desc']); ?></p>
+                            <span class="inline-block w-max border-b-2 border-white pb-1 text-[11px] font-black uppercase tracking-widest">
+                                Explore
+                            </span>
+                        </div>
+                    </div>
+                </article>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <!-- Row 4 – SINTRABOARD & STANDEES -->
+        <div class="space-y-8">
+            <header>
+                <h2 class="text-2xl sm:text-3xl font-black tracking-widest text-gray-900 uppercase">
+                    SINTRABOARD & STANDEES
+                </h2>
+            </header>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+                <?php
+                $sintraCards = [
+                    ['img' => 'sintra-standee-store.jpg', 'subtitle' => 'Promotion', 'title' => 'Store Standees', 'desc' => 'Lightweight and durable freestanding promotional signs.'],
+                    ['img' => 'sintra-promo-indoor.jpg', 'subtitle' => 'Indoor', 'title' => 'Stickers on Sintraboard', 'desc' => 'Rigid board signages perfect for menus and wall displays.'],
+                    ['img' => 'sintra-product-display.jpg', 'subtitle' => 'Retail', 'title' => 'Product Stands', 'desc' => 'Highlight your products with custom sintraboard displays.'],
+                    ['img' => 'sintra-directional.jpg', 'subtitle' => 'Wayfinding', 'title' => 'Indoor Signage', 'desc' => 'Clean and sturdy signs for better indoor navigation.']
+                ];
+                foreach ($sintraCards as $card):
+                ?>
+                <article class="group relative overflow-hidden bg-gray-100 cursor-pointer">
+                    <div class="relative aspect-[4/5] overflow-hidden">
+                        <img src="/printflow/public/assets/images/showcase/<?php echo $card['img']; ?>" 
+                             alt="<?php echo htmlspecialchars($card['title']); ?>"
+                             class="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-110">
+                        
+                        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-500 ease-in-out flex flex-col justify-end p-6 text-white">
+                            <p class="text-[10px] font-bold tracking-[0.3em] uppercase mb-1 text-gray-200"><?php echo htmlspecialchars($card['subtitle']); ?></p>
+                            <h3 class="text-lg font-bold mb-2"><?php echo htmlspecialchars($card['title']); ?></h3>
+                            <p class="text-xs text-gray-100 mb-4 line-clamp-2"><?php echo htmlspecialchars($card['desc']); ?></p>
+                            <span class="inline-block w-max border-b-2 border-white pb-1 text-[11px] font-black uppercase tracking-widest">
+                                Explore
+                            </span>
+                        </div>
+                    </div>
+                </article>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <!-- Row 5 – CUSTOM LAYOUTS & SOUVENIRS -->
+        <div class="space-y-8">
+            <header>
+                <h2 class="text-2xl sm:text-3xl font-black tracking-widest text-gray-900 uppercase">
+                    CUSTOM LAYOUTS & SOUVENIRS
+                </h2>
+            </header>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+                <?php
+                $giftCards = [
+                    ['img' => 'gifts-mug.jpg', 'subtitle' => 'Souvenirs', 'title' => 'Mug Printing', 'desc' => 'Personalized ceramic mugs for corporate and personal gifts.'],
+                    ['img' => 'gifts-keychain.jpg', 'subtitle' => 'Keepsakes', 'title' => 'Custom Keychains', 'desc' => 'Engraved or printed keychains for events and branding.'],
+                    ['img' => 'gifts-invitation.jpg', 'subtitle' => 'Events', 'title' => 'Layout Designs', 'desc' => 'Stunning invitation layouts for weddings and milestones.'],
+                    ['img' => 'gifts-graphics.jpg', 'subtitle' => 'Graphic Design', 'title' => 'Digital Assets', 'desc' => 'Custom graphic mockups and brand identity services.']
+                ];
+                foreach ($giftCards as $card):
+                ?>
+                <article class="group relative overflow-hidden bg-gray-100 cursor-pointer">
+                    <div class="relative aspect-[4/5] overflow-hidden">
+                        <img src="/printflow/public/assets/images/showcase/<?php echo $card['img']; ?>" 
+                             alt="<?php echo htmlspecialchars($card['title']); ?>"
+                             class="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-110">
+                        
+                        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-500 ease-in-out flex flex-col justify-end p-6 text-white">
+                            <p class="text-[10px] font-bold tracking-[0.3em] uppercase mb-1 text-gray-200"><?php echo htmlspecialchars($card['subtitle']); ?></p>
+                            <h3 class="text-lg font-bold mb-2"><?php echo htmlspecialchars($card['title']); ?></h3>
+                            <p class="text-xs text-gray-100 mb-4 line-clamp-2"><?php echo htmlspecialchars($card['desc']); ?></p>
+                            <span class="inline-block w-max border-b-2 border-white pb-1 text-[11px] font-black uppercase tracking-widest">
+                                Explore
+                            </span>
+                        </div>
+                    </div>
+                </article>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+    </div>
+</section>
+
 <section class="lp-section" id="lp-services">
     <div class="lp-wrap">
         <div class="lp-heading-wrap">

@@ -1,0 +1,30 @@
+Categories:
+ID: 1 | Name: tarp
+ID: 2 | Name: vinyl
+ID: 3 | Name: stickers
+
+Inks/Materials Search:
+ID: 1 | Name: 3ft | CatID: 1
+ID: 2 | Name: 4 | CatID: 1
+ID: 3 | Name: eur | CatID: 2
+ID: 4 | Name: dfdffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | CatID: 2
+ID: 5 | Name: dfdffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | CatID: 2
+ID: 6 | Name: dfdffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | CatID: 2
+
+Job Orders Details:
+id | int
+job_title | varchar(255)
+service_type | varchar(100)
+customer_id | int
+width_ft | decimal(10,2)
+height_ft | decimal(10,2)
+quantity | int
+status | enum('PENDING','APPROVED','IN_PRODUCTION','TO_PAY','COMPLETED','CANCELLED','TO_RECEIVE')
+priority | enum('NORMAL','HIGH')
+customer_type | enum('NEW','REGULAR')
+machine_id | int
+estimated_total | decimal(12,2)
+amount_paid | decimal(12,2)
+due_date | datetime
+created_at | timestamp
+updated_at | timestamp

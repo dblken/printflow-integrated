@@ -1,0 +1,22 @@
+Field | Type | Null | Key | Default | Extra
+----------------------------------------------
+order_item_id | int | NO | PRI |  | auto_increment
+order_id | int | NO | MUL |  | 
+product_id | int | NO | MUL |  | 
+quantity | int | NO |  |  | 
+unit_price | decimal(10,2) | NO |  |  | 
+customization_data | text | YES |  |  | 
+design_image | longblob | YES |  |  | 
+design_image_mime | varchar(50) | YES |  |  | 
+design_image_name | varchar(255) | YES |  |  | 
+design_file | varchar(255) | YES |  |  | 
+reference_image_file | varchar(255) | YES |  |  | 
+sku | varchar(50) | YES |  |  | 
+width | decimal(10,2) | YES |  |  | 
+height | decimal(10,2) | YES |  |  | 
+thickness | varchar(50) | YES |  |  | 
+stand_type | varchar(100) | YES |  |  | 
+lamination | varchar(100) | YES |  |  | 
+cut_type | varchar(100) | YES |  |  | 
+design_notes | text | YES |  |  | 
+design_file_path | varchar(255) | YES |  |  | 

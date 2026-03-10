@@ -7,7 +7,7 @@ $user_initial = strtoupper(substr($user_name, 0, 1));
 
 <aside class="sidebar">
     <div class="sidebar-header">
-        <a href="dashboard.php" class="logo">
+        <a href="<?php echo BASE_URL; ?>/admin/dashboard.php" class="logo">
             <div class="logo-icon">P</div>
             <span>PrintFlow</span>
         </a>
@@ -17,36 +17,71 @@ $user_initial = strtoupper(substr($user_name, 0, 1));
         <!-- Business Management -->
         <div class="nav-section">
             <div class="nav-section-title">Business</div>
+
             <a href="<?php echo BASE_URL; ?>/admin/dashboard.php" class="nav-item <?php echo $nav_current_file === 'dashboard.php' ? 'active' : ''; ?>">
                 <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
                 </svg>
                 Dashboard
             </a>
+
             <a href="<?php echo BASE_URL; ?>/admin/orders_management.php" class="nav-item <?php echo $nav_current_file === 'orders_management.php' ? 'active' : ''; ?>">
                 <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                 </svg>
                 Orders
             </a>
+
+            <a href="<?php echo BASE_URL; ?>/admin/customizations.php" class="nav-item <?php echo $nav_current_file === 'customizations.php' ? 'active' : ''; ?>">
+                <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
+                </svg>
+                Customization
+            </a>
+
             <a href="<?php echo BASE_URL; ?>/admin/customers_management.php" class="nav-item <?php echo $nav_current_file === 'customers_management.php' ? 'active' : ''; ?>">
                 <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
                 </svg>
                 Customers
             </a>
-            <a href="<?php echo BASE_URL; ?>/admin/products_management.php" class="nav-item <?php echo $nav_current_file === 'products_management.php' ? 'active' : ''; ?>">
+
+            <a href="<?php echo BASE_URL; ?>/admin/products_management.php" class="nav-item <?php echo in_array($nav_current_file, ['products_management.php', 'product_variants.php']) ? 'active' : ''; ?>">
                 <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
                 </svg>
                 Products
             </a>
-            <a href="<?php echo BASE_URL; ?>/admin/inventory_management.php" class="nav-item <?php echo in_array($nav_current_file, ['inventory_management.php', 'inventory_monthly.php']) ? 'active' : ''; ?>">
+
+            <!-- Inventory section with sub-items -->
+            <a href="<?php echo BASE_URL; ?>/admin/inv_items_management.php" class="nav-item <?php echo in_array($nav_current_file, ['inv_items_management.php']) ? 'active' : ''; ?>">
                 <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
                 </svg>
-                Inventory
+                Inventory Items
             </a>
+
+            <a href="<?php echo BASE_URL; ?>/admin/inv_transactions_ledger.php" class="nav-item <?php echo $nav_current_file === 'inv_transactions_ledger.php' ? 'active' : ''; ?>">
+                <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                Inventory Ledger
+            </a>
+
+            <a href="<?php echo BASE_URL; ?>/admin/storefront_management.php" class="nav-item <?php echo $nav_current_file === 'storefront_management.php' ? 'active' : ''; ?>">
+                <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+                </svg>
+                Storefront
+            </a>
+
+            <a href="<?php echo BASE_URL; ?>/admin/branches_management.php" class="nav-item <?php echo $nav_current_file === 'branches_management.php' ? 'active' : ''; ?>">
+                <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21"/>
+                </svg>
+                Branches
+            </a>
+
             <a href="<?php echo BASE_URL; ?>/admin/reports.php" class="nav-item <?php echo $nav_current_file === 'reports.php' ? 'active' : ''; ?>">
                 <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
@@ -104,13 +139,13 @@ $user_initial = strtoupper(substr($user_name, 0, 1));
     </nav>
     
     <div class="sidebar-footer">
-        <a href="profile" class="user-profile" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 6px; transition: background 0.2s;">
+        <a href="<?php echo BASE_URL; ?>/admin/profile.php" class="user-profile" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 6px; transition: background 0.2s;">
             <div class="user-avatar">
                 <?php echo $user_initial; ?>
             </div>
             <div class="user-info">
                 <div class="user-name-display"><?php echo htmlspecialchars($user_name); ?></div>
-                <div class="user-role">Admin Manager</div>
+                <div class="user-role">Admin</div>
             </div>
         </a>
         <a href="<?php echo BASE_URL; ?>/public/logout.php" data-logout-confirm class="logout-btn">

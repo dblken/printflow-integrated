@@ -312,6 +312,7 @@ function auth_restore_session_from_token($token) {
         $_SESSION['user_name'] = trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? ''));
         $_SESSION['user_email'] = $u['email'] ?? '';
         $_SESSION['user_status'] = $status;
+        $_SESSION['branch_id'] = (int)($u['branch_id'] ?? 1);
     }
     return true;
 }
@@ -346,6 +347,34 @@ function is_staff() {
  */
 function is_customer() {
     return is_logged_in() && $_SESSION['user_type'] === 'Customer';
+}
+
+/**
+ * Check if user is Manager
+ * Note: This system uses Admin/Staff roles. Manager is not a separate role,
+ * so this always returns false. The admin dashboard uses this to redirect
+ * managers to their own panel — Admins bypass this check.
+ * @return bool
+ */
+function is_manager() {
+    return is_logged_in() && ($_SESSION['user_type'] === 'Manager');
+}
+
+/**
+ * Check if the current user has any of the specified roles
+ * @param string|array $roles
+ * @return bool
+ */
+function has_role($roles) {
+    if (!isset($_SESSION['user_type'])) {
+        return false;
+    }
+    
+    if (!is_array($roles)) {
+        $roles = [$roles];
+    }
+    
+    return in_array($_SESSION['user_type'], $roles);
 }
 
 /**
@@ -410,6 +439,7 @@ function login_user($email, $password) {
     $_SESSION['user_name'] = $user['first_name'] . ' ' . $user['last_name'];
     $_SESSION['user_email'] = $user['email'];
     $_SESSION['user_status'] = $user['status']; // 'Activated' or 'Pending'
+    $_SESSION['branch_id'] = (int)($user['branch_id'] ?? 1);
 
     session_regenerate_id(true); // Prevent session fixation
     auth_set_persistent_login((int) $user['user_id'], $user['role']);

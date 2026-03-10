@@ -19,7 +19,7 @@
     
     /* Layout */
     .dashboard-container { display: flex; min-height: 100vh; }
-    .main-content { flex: 1; margin-left: 240px; overflow-y: auto; }
+    .main-content { margin-left: 240px; width: calc(100% - 240px); min-width: 0; overflow-y: auto; }
     
     /* Common Headers */
     .top-bar, header { 
@@ -156,9 +156,9 @@
     .sidebar-nav { flex: 1; overflow-y: auto; padding: 16px 0; }
     .nav-section { margin-bottom: 24px; }
     .nav-section-title { font-size: 11px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; padding: 0 20px; margin-bottom: 8px; }
-    .nav-item { display: flex; align-items: center; gap: 12px; padding: 10px 20px; color: #6b7280; font-size: 14px; text-decoration: none; transition: all 0.2s; }
+    .nav-item { display: flex; align-items: center; gap: 12px; padding: 10px 20px; color: #6b7280; font-size: 14px; text-decoration: none; transition: background 0.2s, color 0.2s, box-shadow 0.2s; position: relative; }
     .nav-item:hover { background: #f9fafb; color: #1f2937; }
-    .nav-item.active { background: #ecfdf5; color: #10b981; font-weight: 500; border-right: 3px solid #10b981; }
+    .nav-item.active { background: #ecfdf5; color: #10b981; box-shadow: inset -3px 0 0 #10b981; }
     .nav-icon { width: 20px; height: 20px; }
     
     .sidebar-footer { padding: 16px; border-top: 1px solid #e5e7eb; }

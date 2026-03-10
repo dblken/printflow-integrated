@@ -72,19 +72,21 @@ function send_sms($phone, $message) {
  * @param string $type Notification type ('Order', 'Stock', 'System', 'Message')
  * @param bool $send_email Whether to send email
  * @param bool $send_sms Whether to send SMS
+ * @param int|null $data_id Relevant ID (e.g. order_id)
  * @return bool|int
  */
-function create_notification($user_id, $user_type, $message, $type = 'System', $send_email = false, $send_sms = false) {
+function create_notification($user_id, $user_type, $message, $type = 'System', $send_email = false, $send_sms = false, $data_id = null) {
     $customer_id = $user_type === 'Customer' ? $user_id : null;
     $staff_user_id = $user_type !== 'Customer' ? $user_id : null;
     
-    $sql = "INSERT INTO notifications (user_id, customer_id, message, type, is_read, send_email, send_sms) 
-            VALUES (?, ?, ?, ?, 0, ?, ?)";
+    $sql = "INSERT INTO notifications (user_id, customer_id, message, data_id, type, is_read, send_email, send_sms) 
+            VALUES (?, ?, ?, ?, ?, 0, ?, ?)";
     
-    $result = db_execute($sql, 'iissii', [
+    $result = db_execute($sql, 'iisisii', [
         $staff_user_id,
         $customer_id,
         $message,
+        $data_id,
         $type,
         $send_email ? 1 : 0,
         $send_sms ? 1 : 0
@@ -316,7 +318,11 @@ function status_badge($status, $type = 'order') {
             'Pending Approval' => 'bg-indigo-100 text-indigo-800',
             'Processing' => 'bg-blue-100 text-blue-800',
             'In Production' => 'bg-blue-100 text-blue-800',
+            'Design Approved' => 'bg-indigo-100 text-indigo-800',
             'Printing' => 'bg-purple-100 text-purple-800',
+            'Revision Requested' => 'bg-blue-100 text-blue-800',
+            'Downpayment Submitted' => 'bg-yellow-50 text-yellow-700 border border-yellow-200',
+            'Paid – In Process' => 'bg-green-50 text-green-700 border border-green-200',
             'Ready for Pickup' => 'bg-green-100 text-green-800',
             'Completed' => 'bg-green-200 text-green-900',
             'Cancelled' => 'bg-red-100 text-red-800'
@@ -329,7 +335,7 @@ function status_badge($status, $type = 'order') {
         'design' => [
             'Pending' => 'bg-yellow-100 text-yellow-800',
             'Approved' => 'bg-green-100 text-green-800',
-            'Rejected' => 'bg-red-100 text-red-800'
+            'Revision Requested' => 'bg-blue-100 text-blue-800'
         ]
     ];
     
@@ -340,16 +346,15 @@ function status_badge($status, $type = 'order') {
 
 /**
  * Check if a customer can cancel an order
- * Rules: Status must be 'Pending' AND within 60 minutes of placement
+ * Rules: Status must be in ['Pending Review', 'Pending', 'Pending Approval', 'For Revision']
  */
 function can_customer_cancel_order($order) {
-    if (($order['status'] ?? '') !== 'Pending') return false;
+    if (!$order) return false;
     
-    $order_time = strtotime($order['order_date']);
-    $now = time();
-    $diff_minutes = ($now - $order_time) / 60;
+    $cancellable_statuses = ['Pending', 'Pending Review', 'Pending Approval', 'For Revision'];
+    $status = $order['status'] ?? '';
     
-    return $diff_minutes <= 60;
+    return in_array($status, $cancellable_statuses);
 }
 
 /**
@@ -369,6 +374,73 @@ function is_customer_restricted($customer_id) {
 }
 
 /**
+ * Automatically evaluate and update customer_type (new/regular)
+ * Logic:
+ * - Regular if completed_orders >= 3 AND cancelled_orders < 2
+ * - Else New
+ */
+function refresh_customer_type($customer_id) {
+    // Count completed and paid orders
+    $completed_result = db_query("
+        SELECT COUNT(*) as count FROM orders 
+        WHERE customer_id = ? AND status = 'Completed' AND payment_status = 'Paid'
+    ", 'i', [$customer_id]);
+    $completed_count = $completed_result[0]['count'] ?? 0;
+
+    // Count cancelled orders
+    $cancelled_result = db_query("
+        SELECT COUNT(*) as count FROM orders 
+        WHERE customer_id = ? AND status = 'Cancelled'
+    ", 'i', [$customer_id]);
+    $cancelled_count = $cancelled_result[0]['count'] ?? 0;
+
+    $new_type = ($completed_count >= 3 && $cancelled_count < 2) ? 'regular' : 'new';
+
+    return db_execute("UPDATE customers SET customer_type = ? WHERE customer_id = ?", 'si', [$new_type, $customer_id]);
+}
+
+/**
+ * Approve Design design
+ */
+function approve_design($order_id, $staff_id) {
+    // Determine the next overall order status safely
+    $order = db_query("SELECT status, payment_status FROM orders WHERE order_id = ?", 'i', [$order_id]);
+    if (empty($order)) return false;
+    
+    $current_status = $order[0]['status'];
+    $next_status = $current_status;
+    
+    // Only transition if it's in a pending/review state
+    if (in_array($current_status, ['Pending', 'Pending Review', 'Pending Approval'])) {
+        $next_status = ($order[0]['payment_status'] === 'Paid') ? 'Processing' : 'To Pay';
+    }
+
+    $success = db_execute(
+        "UPDATE orders SET design_status = 'Approved', status = ?, reviewed_by = ?, reviewed_at = NOW() WHERE order_id = ?",
+        'sii', [$next_status, $staff_id, $order_id]
+    );
+
+    if ($success) {
+        log_activity($staff_id, 'Design Approved', "Approved design for Order #$order_id");
+        
+        $order_info = db_query("SELECT customer_id FROM orders WHERE order_id = ?", 'i', [$order_id]);
+        if (!empty($order_info)) {
+            $customer_id = $order_info[0]['customer_id'];
+            create_notification(
+                $customer_id, 
+                'Customer', 
+                "✅ Your design for order #{$order_id} has been approved!", 
+                'Order', 
+                true, 
+                false, 
+                $order_id
+            );
+        }
+    }
+    return $success;
+}
+
+/**
  * Update order status with side-effects (Notif, Reset Cancel Count)
  */
 function update_order_status($order_id, $new_status, $user_id = null, $reason = null) {
@@ -377,6 +449,13 @@ function update_order_status($order_id, $new_status, $user_id = null, $reason = 
     $order = $order_result[0];
     
     // Update status
+    if ($new_status === 'In Production' || $new_status === 'Processing' || $new_status === 'Printing') {
+        if ($order['design_status'] !== 'Approved') {
+            error_log("Cannot move order #{$order_id} to production without design approval.");
+            return false;
+        }
+    }
+
     if ($new_status === 'Cancelled') {
         $success = db_execute(
             "UPDATE orders SET status = 'Cancelled', cancelled_by = 'Staff', cancel_reason = ?, cancelled_at = NOW() WHERE order_id = ?",
@@ -400,6 +479,9 @@ function update_order_status($order_id, $new_status, $user_id = null, $reason = 
             if (!empty($cust_data) && $cust_data[0]['cancel_count'] < 7) {
                 db_execute("UPDATE customers SET cancel_count = 0 WHERE customer_id = ?", 'i', [$cust_id]);
             }
+            
+            // Also refresh their classification (Regular/New)
+            refresh_customer_type($cust_id);
         }
     }
     
@@ -539,4 +621,28 @@ function set_setting($key, $value) {
     } else {
         return db_execute("UPDATE settings SET value = ? WHERE key_name = ?", 'ss', [$value, $key]);
     }
+}
+/**
+ * Alias for get_pagination_links for Admin compatibility
+ */
+function render_pagination($current_page, $total_pages, $params = []) {
+    return get_pagination_links($current_page, $total_pages, $params);
+}
+/**
+ * Get count of unread messages for an order
+ * @param int $order_id
+ * @param string $receiver_type 'Customer' (if checking for customer) or 'User' (if checking for staff)
+ * @return int
+ */
+function get_unread_chat_count($order_id, $receiver_type) {
+    // If receiver is Customer, we count messages from 'User'
+    // If receiver is User (Staff/Admin), we count messages from 'Customer'
+    $sender_type = ($receiver_type === 'Customer') ? 'User' : 'Customer';
+    
+    $res = db_query(
+        "SELECT COUNT(*) as unread FROM order_messages WHERE order_id = ? AND sender_type = ? AND is_seen = 0",
+        'is', [$order_id, $sender_type]
+    );
+    
+    return (int)($res[0]['unread'] ?? 0);
 }
