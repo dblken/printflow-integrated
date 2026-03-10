@@ -4,7 +4,7 @@
  */
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
-require_once __DIR__ . '/../includes/service_order_helper.php';
+require_once __DIR__ . '/../includes/service_order_helper.php';// Get order with customer info
 
 header('Content-Type: application/json');
 

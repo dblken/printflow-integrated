@@ -26,7 +26,7 @@ $order_result = db_query("
     FROM orders o
     LEFT JOIN customers c ON o.customer_id = c.customer_id
     WHERE o.order_id = ?
-", 'i', [$order_id]);
+", 'i', [$order_id]);// Get order with customer info
 
 if (empty($order_result)) {
     echo json_encode(['error' => 'Order not found']);
