@@ -92,9 +92,54 @@ require_once __DIR__ . '/../includes/header.php';
                                 <?php foreach ($cart_items as $pid => $item): ?>
                                     <tr style="border-bottom:1px solid #f3f4f6;">
                                         <td style="padding:1rem; display:flex; align-items:center; gap:1rem;">
-                                            <div style="width:48px; height:48px; background:#f3f4f6; border-radius:6px; display:flex; align-items:center; justify-content:center;">📦</div>
+                                            <?php
+                                            $prod_id = (int)($item['product_id'] ?? 0);
+                                            $product_img = "";
+                                            
+                                            // 1. Try explicit product ID
+                                            if ($prod_id > 0) {
+                                                $img_base = "../public/images/products/product_" . $prod_id;
+                                                if (file_exists($img_base . ".jpg")) {
+                                                    $product_img = "/printflow/public/images/products/product_" . $prod_id . ".jpg";
+                                                } elseif (file_exists($img_base . ".png")) {
+                                                    $product_img = "/printflow/public/images/products/product_" . $prod_id . ".png";
+                                                }
+                                            }
+                                            
+                                            // 2. Fallback based on category/service_type for Service Orders
+                                            if (empty($product_img)) {
+                                                $cat_lower = strtolower(($item['category'] ?? '') . ' ' . $item['name']);
+                                                if (strpos($cat_lower, 'reflectorized') !== false || strpos($cat_lower, 'signage') !== false) {
+                                                    $product_img = "/printflow/public/images/products/signage.jpg";
+                                                } elseif (strpos($cat_lower, 'tarpaulin') !== false) {
+                                                    $product_img = "/printflow/public/images/products/product_41.jpg";
+                                                } elseif (strpos($cat_lower, 'sintraboard') !== false || strpos($cat_lower, 'standee') !== false) {
+                                                    $product_img = "/printflow/public/images/services/Sintraboard Standees.jpg";
+                                                } elseif (strpos($cat_lower, 't-shirt') !== false || strpos($cat_lower, 'shirt') !== false) {
+                                                    $product_img = "/printflow/public/images/products/product_31.jpg";
+                                                } elseif (strpos($cat_lower, 'sticker') !== false || strpos($cat_lower, 'decal') !== false) {
+                                                    if (strpos($cat_lower, 'glass') !== false || strpos($cat_lower, 'frosted') !== false) {
+                                                        $product_img = "/printflow/public/images/products/Glass Stickers  Wall  Frosted Stickers.png";
+                                                    } else {
+                                                        $product_img = "/printflow/public/images/products/product_21.jpg";
+                                                    }
+                                                } elseif (strpos($cat_lower, 'souvenir') !== false) {
+                                                    $product_img = "/printflow/public/assets/images/icon-192.png";
+                                                }
+                                            }
+                                            ?>
+                                            <div style="width:48px; height:48px; border-radius:6px; overflow:hidden; border:1px solid #e2e8f0; background:#f8fafc; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                                                <?php if (!empty($product_img)): ?>
+                                                    <img src="<?php echo $product_img; ?>" style="width:100%; height:100%; object-fit:cover;" alt="Product">
+                                                <?php else: ?>
+                                                    <img src="/printflow/public/assets/images/icon-192.png" style="width:70%; height:70%; object-fit:contain; opacity:0.8;" alt="Logo">
+                                                <?php endif; ?>
+                                            </div>
                                             <div>
                                                 <div style="font-weight:600;"><?php echo htmlspecialchars($item['name']); ?></div>
+                                                <?php if (!empty($item['category'])): ?>
+                                                    <div style="font-size:0.75rem; color:#6b7280;"><?php echo htmlspecialchars($item['category']); ?></div>
+                                                <?php endif; ?>
                                             </div>
                                         </td>
                                         <td style="padding:1rem; text-align:center;">
@@ -107,7 +152,7 @@ require_once __DIR__ . '/../includes/header.php';
                                             <?php echo format_currency($item['price'] * $item['quantity']); ?>
                                         </td>
                                         <td style="padding:1rem; text-align:center;">
-                                            <button type="submit" name="remove_item" value="<?php echo $pid; ?>" style="color:#ef4444; background:none; border:none; cursor:pointer;" title="Remove">🗑️</button>
+                                            <button type="button" onclick="confirmRemove('<?php echo $pid; ?>')" style="color:#ef4444; background:none; border:none; cursor:pointer;" title="Remove">🗑️</button>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -133,5 +178,32 @@ require_once __DIR__ . '/../includes/header.php';
         <?php endif; ?>
     </div>
 </div>
+
+<!-- Remove Confirmation Modal -->
+<div id="removeModal" style="display:none; position:fixed; inset:0; z-index:50; align-items:center; justify-content:center;">
+    <div style="position:absolute; inset:0; background:rgba(0,0,0,0.5); backdrop-filter:blur(2px);" onclick="closeRemoveModal()"></div>
+    <div style="position:relative; background:white; padding:2rem; border-radius:12px; max-width:400px; width:90%; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1); z-index:51;">
+        <h3 style="font-size:1.25rem; font-weight:700; color:#111827; margin-bottom:0.5rem;">Remove from Cart?</h3>
+        <p style="color:#4b5563; margin-bottom:1.5rem; line-height:1.5;">Are you sure you want to remove this item from your shopping cart?</p>
+        <div style="display:flex; justify-content:flex-end; gap:0.75rem;">
+            <button type="button" onclick="closeRemoveModal()" style="padding:0.5rem 1.25rem; border-radius:8px; background:#f1f5f9; color:#475569; font-weight:600; border:none; cursor:pointer; transition:background 0.2s;">Cancel</button>
+            <form method="POST" id="removeForm" style="margin:0;">
+                <input type="hidden" name="remove_item" id="removeItemId" value="">
+                <button type="submit" style="padding:0.5rem 1.25rem; border-radius:8px; background:#ef4444; color:white; font-weight:600; border:none; cursor:pointer; transition:background 0.2s;">Delete</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function confirmRemove(pid) {
+    document.getElementById('removeItemId').value = pid;
+    document.getElementById('removeModal').style.display = 'flex';
+}
+function closeRemoveModal() {
+    document.getElementById('removeModal').style.display = 'none';
+    document.getElementById('removeItemId').value = '';
+}
+</script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

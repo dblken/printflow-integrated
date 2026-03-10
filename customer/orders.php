@@ -11,6 +11,19 @@ require_role('Customer');
 
 $customer_id = get_user_id();
 
+// Get order statistics for the summary cards
+$total_orders_result = db_query("SELECT COUNT(*) as count FROM orders WHERE customer_id = ?", 'i', [$customer_id]);
+$total_orders = $total_orders_result[0]['count'] ?? 0;
+
+$pending_orders_result = db_query("SELECT COUNT(*) as count FROM orders WHERE customer_id = ? AND status IN ('Pending', 'Pending Approval', 'Pending Review', 'For Revision')", 'i', [$customer_id]);
+$pending_orders = $pending_orders_result[0]['count'] ?? 0;
+
+$processing_orders_result = db_query("SELECT COUNT(*) as count FROM orders WHERE customer_id = ? AND status IN ('Processing', 'In Production', 'Printing')", 'i', [$customer_id]);
+$processing_orders = $processing_orders_result[0]['count'] ?? 0;
+
+$ready_orders_result = db_query("SELECT COUNT(*) as count FROM orders WHERE customer_id = ? AND status = 'Ready for Pickup'", 'i', [$customer_id]);
+$ready_orders = $ready_orders_result[0]['count'] ?? 0;
+
 // TikTok style tabs
 $active_tab = $_GET['tab'] ?? 'all';
 
@@ -24,8 +37,15 @@ $tab_status_map = [
 ];
 
 // Build query
-$sql = "SELECT * FROM orders WHERE customer_id = ?";
-$count_sql = "SELECT COUNT(*) as total FROM orders WHERE customer_id = ?";
+$sql = "SELECT o.*, 
+        (SELECT GROUP_CONCAT(COALESCE(p.name, 'Custom Order') SEPARATOR ', ') FROM order_items oi LEFT JOIN products p ON oi.product_id = p.product_id WHERE oi.order_id = o.order_id) as item_names,
+        (SELECT COALESCE(p.name, 'Custom Order') FROM order_items oi LEFT JOIN products p ON oi.product_id = p.product_id WHERE oi.order_id = o.order_id ORDER BY oi.order_item_id ASC LIMIT 1) as first_product_name,
+        (SELECT p.product_id FROM order_items oi LEFT JOIN products p ON oi.product_id = p.product_id WHERE oi.order_id = o.order_id ORDER BY oi.order_item_id ASC LIMIT 1) as first_product_id,
+        (SELECT oi.customization_data FROM order_items oi WHERE oi.order_id = o.order_id ORDER BY oi.order_item_id ASC LIMIT 1) as first_item_customization,
+        (SELECT oi.order_item_id FROM order_items oi WHERE oi.order_id = o.order_id ORDER BY oi.order_item_id ASC LIMIT 1) as first_item_id,
+        (SELECT IF(oi.design_image IS NOT NULL AND oi.design_image != '', 1, 0) FROM order_items oi WHERE oi.order_id = o.order_id ORDER BY oi.order_item_id ASC LIMIT 1) as first_item_has_design
+        FROM orders o WHERE o.customer_id = ?";
+$count_sql = "SELECT COUNT(*) as total FROM orders o WHERE o.customer_id = ?";
 $params = [$customer_id];
 $count_params = [$customer_id]; // Need this for the count query
 $types = 'i';
@@ -35,8 +55,8 @@ if ($active_tab !== 'all' && isset($tab_status_map[$active_tab])) {
     $statuses = $tab_status_map[$active_tab];
     $placeholders = implode(',', array_fill(0, count($statuses), '?'));
     
-    $sql .= " AND status IN ($placeholders)";
-    $count_sql .= " AND status IN ($placeholders)";
+    $sql .= " AND o.status IN ($placeholders)";
+    $count_sql .= " AND o.status IN ($placeholders)";
     
     foreach ($statuses as $s) {
         $params[] = $s;
@@ -55,7 +75,7 @@ $total_result = db_query($count_sql, $count_types, $count_params);
 $total_items = $total_result[0]['total'] ?? 0;
 $total_pages = ceil($total_items / $items_per_page);
 
-$sql .= " ORDER BY order_date DESC LIMIT ? OFFSET ?";
+$sql .= " ORDER BY o.order_date DESC LIMIT ? OFFSET ?";
 $params[] = $items_per_page;
 $params[] = $offset;
 $types .= 'ii';
@@ -66,6 +86,8 @@ $page_title = 'My Orders - PrintFlow';
 $use_customer_css = true;
 require_once __DIR__ . '/../includes/header.php';
 ?>
+
+<link rel="stylesheet" href="/printflow/public/assets/css/chat.css">
 
 <style>
 /* TikTok Style Orders Nav */
@@ -116,6 +138,26 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="min-h-screen py-4 md:py-8 bg-gray-50 md:bg-transparent">
     <div class="container mx-auto" style="max-width:800px;">
 
+        <!-- Stats Cards (Transferred from Dashboard) -->
+        <div class="ct-stats" style="margin-bottom: 2rem; margin-top: 1rem;">
+            <div class="ct-stat-card yellow">
+                <p class="ct-stat-label">Pending</p>
+                <p class="ct-stat-value"><?php echo $pending_orders; ?></p>
+            </div>
+            <div class="ct-stat-card blue">
+                <p class="ct-stat-label">Processing</p>
+                <p class="ct-stat-value"><?php echo $processing_orders; ?></p>
+            </div>
+            <div class="ct-stat-card green">
+                <p class="ct-stat-label">Ready for Pickup</p>
+                <p class="ct-stat-value"><?php echo $ready_orders; ?></p>
+            </div>
+            <div class="ct-stat-card gray">
+                <p class="ct-stat-label">Total Orders</p>
+                <p class="ct-stat-value"><?php echo $total_orders; ?></p>
+            </div>
+        </div>
+
         <!-- TikTok Tabs -->
         <div class="tt-tabs-wrapper">
             <div class="tt-tabs">
@@ -149,24 +191,130 @@ require_once __DIR__ . '/../includes/header.php';
         <?php else: ?>
             <?php foreach ($orders as $index => $order): ?>
                 <div class="ct-order-card" id="order-card-<?php echo $order['order_id']; ?>">
-                    <div class="ct-order-header" style="margin-bottom: 0; padding-bottom: 12px; border-bottom: 1px solid #f1f5f9;">
-                        <div style="flex: 1;">
-                            <p class="ct-order-id" style="font-size: 1.1rem; color: #1e293b;">Order #<?php echo $order['order_id']; ?></p>
-                            <p class="ct-order-date" style="font-size: 0.75rem; color: #94a3b8; font-weight: 500;"><?php echo format_datetime($order['order_date']); ?></p>
+                    <!-- Card Top: product image + info + price -->
+                    <div style="display:flex; gap:14px; align-items:flex-start; padding-bottom:12px; border-bottom:1px solid #f1f5f9;">
+                        <!-- Product Image -->
+                        <div style="flex-shrink:0;">
+                            <?php 
+                            // Determine item display name and base category first
+                            $display_name = !empty($order['first_product_name']) ? $order['first_product_name'] : 'Order Items';
+                            $service_category = '';
+                            if ($display_name === 'Custom Order' && !empty($order['first_item_customization'])) {
+                                $c_json = json_decode($order['first_item_customization'], true);
+                                if (!empty($c_json['service_type'])) {
+                                    $display_name = $c_json['service_type'];
+                                    $service_category = $c_json['service_type'];
+                                    if (!empty($c_json['product_type'])) {
+                                        $display_name .= " (" . $c_json['product_type'] . ")";
+                                    }
+                                }
+                            }
+
+                            // Determine image or design
+                            $show_design = !empty($order['first_item_has_design']) && !empty($order['first_item_id']);
+                            $prod_id = (int)($order['first_product_id'] ?? 0);
+                            $product_img = "";
+                            
+                            // Check explicit product ID image
+                            if (!$show_design && $prod_id > 0) {
+                                $img_base = "../public/images/products/product_" . $prod_id;
+                                if (file_exists($img_base . ".jpg")) {
+                                    $product_img = "/printflow/public/images/products/product_" . $prod_id . ".jpg";
+                                } elseif (file_exists($img_base . ".png")) {
+                                    $product_img = "/printflow/public/images/products/product_" . $prod_id . ".png";
+                                }
+                            }
+
+                            // Fallback based on category/service_type for Service Orders without specific product
+                            if (!$show_design && empty($product_img)) {
+                                $cat_lower = strtolower($service_category ?: $display_name);
+                                if (strpos($cat_lower, 'reflectorized') !== false || strpos($cat_lower, 'signage') !== false) {
+                                    $product_img = "/printflow/public/images/products/signage.jpg";
+                                } elseif (strpos($cat_lower, 'tarpaulin') !== false) {
+                                    $product_img = "/printflow/public/images/products/product_41.jpg";
+                                } elseif (strpos($cat_lower, 'sintraboard') !== false || strpos($cat_lower, 'standee') !== false) {
+                                    $product_img = "/printflow/public/images/services/Sintraboard Standees.jpg";
+                                } elseif (strpos($cat_lower, 't-shirt') !== false || strpos($cat_lower, 'shirt') !== false) {
+                                    $product_img = "/printflow/public/images/products/product_31.jpg";
+                                } elseif (strpos($cat_lower, 'sticker') !== false || strpos($cat_lower, 'decal') !== false) {
+                                    if (strpos($cat_lower, 'glass') !== false || strpos($cat_lower, 'frosted') !== false) {
+                                        $product_img = "/printflow/public/images/products/Glass Stickers  Wall  Frosted Stickers.png";
+                                    } else {
+                                        $product_img = "/printflow/public/images/products/product_21.jpg";
+                                    }
+                                } elseif (strpos($cat_lower, 'souvenir') !== false) {
+                                    // Default image for souvenirs (or general fallback)
+                                    $product_img = "/printflow/public/assets/images/icon-192.png";
+                                }
+                            }
+                            ?>
+
+                            <?php if ($show_design): ?>
+                                <a href="/printflow/public/serve_design.php?type=order_item&id=<?php echo (int)$order['first_item_id']; ?>" target="_blank" style="display:block; width:72px; height:72px; border-radius:12px; overflow:hidden; border:2px solid #e2e8f0; box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+                                    <img src="/printflow/public/serve_design.php?type=order_item&id=<?php echo (int)$order['first_item_id']; ?>" style="width:100%; height:100%; object-fit:cover;" alt="Product Image" onerror="this.src='/printflow/public/assets/images/placeholder.png';">
+                                </a>
+                            <?php elseif (!empty($product_img)): ?>
+                                <div style="width:72px; height:72px; border-radius:12px; overflow:hidden; border:2px solid #e2e8f0; box-shadow:0 2px 8px rgba(0,0,0,0.1); background:#f8fafc; display:flex; align-items:center; justify-content:center;">
+                                    <img src="<?php echo $product_img; ?>" style="max-width:100%; max-height:100%; object-fit:contain;" alt="Product Image">
+                                </div>
+                            <?php else: ?>
+                                <!-- Universal Absolute Fallback (Printflow Purple Logo) if all else fails -->
+                                <div style="width:72px; height:72px; border-radius:12px; overflow:hidden; border:2px solid #e2e8f0; box-shadow:0 2px 8px rgba(0,0,0,0.1); background:#f8fafc; display:flex; align-items:center; justify-content:center;">
+                                    <img src="/printflow/public/assets/images/icon-192.png" style="width:70%; height:70%; object-fit:contain; opacity:0.8;" alt="Printflow Logo">
+                                </div>
+                            <?php endif; ?>
                         </div>
-                        <div style="text-align:right;">
-                            <p class="ct-order-amount" style="font-size: 1.25rem; font-weight: 800; color: #4f46e5;"><?php echo format_currency($order['total_amount']); ?></p>
+
+                        <!-- Order Info -->
+                        <div style="flex:1; min-width:0;">
+                            <!-- Bold product name -->
+                            <div style="font-size:1rem; font-weight:800; color:#1e293b; line-height:1.3; margin-bottom:3px;">
+                                <?php echo htmlspecialchars($display_name); ?>
+                                <?php 
+                                // Count additional items
+                                if (!empty($order['item_names'])) {
+                                    $item_count_arr = explode(', ', $order['item_names']);
+                                    if (count($item_count_arr) > 1): ?>
+                                        <span style="font-size:0.75rem; color:#94a3b8; font-weight:500;"> +<?php echo count($item_count_arr) - 1; ?> more</span>
+                                    <?php endif;
+                                }
+                                ?>
+                            </div>
+                            <!-- Order ID -->
+                            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                <span style="font-size:0.8rem; color:#64748b; font-weight:600;">Order #<?php echo $order['order_id']; ?></span>
+                                <?php 
+                                $unread = get_unread_chat_count($order['order_id'], 'Customer');
+                                if ($unread > 0): 
+                                ?>
+                                    <span style="background:#ef4444; color:white; border-radius:50%; width:18px; height:18px; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; animation:pulse 2s infinite;" title="<?php echo $unread; ?> new messages"><?php echo $unread; ?></span>
+                                <?php endif; ?>
+                            </div>
+                            <!-- Date -->
+                            <p style="font-size:0.73rem; color:#94a3b8; font-weight:500; margin-top:2px; margin-bottom:0;"><?php echo format_datetime($order['order_date']); ?></p>
+                        </div>
+
+                        <!-- Price + Status -->
+                        <div style="text-align:right; flex-shrink:0;">
+                            <p class="ct-order-amount" style="font-size:1.15rem; font-weight:800; color:#4f46e5; margin:0;"><?php echo format_currency($order['total_amount']); ?></p>
                             <div style="margin-top:4px;"><?php echo status_badge($order['status'], 'order'); ?></div>
                         </div>
                     </div>
 
-                    <button class="ct-toggle-btn" onclick="toggleOrderDetails(<?php echo $order['order_id']; ?>)">
-                        <span>See More</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                        </svg>
-                    </button>
+                    <!-- Card Bottom: See More + Message Shop -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px;">
+                        <button class="ct-toggle-btn" onclick="toggleOrderDetails(<?php echo $order['order_id']; ?>)" style="margin-top:0;">
+                            <span>See More</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+                        <button type="button" onclick="openOrderChat(<?php echo $order['order_id']; ?>, 'PrintFlow Support')" style="background:#4F46E5; color:white; border:none; padding:8px 16px; border-radius:8px; font-weight:700; display:inline-flex; align-items:center; gap:6px; font-size:13px; cursor:pointer;">
+                            💬 Message Shop
+                        </button>
+                    </div>
 
+                    <!-- Expandable Details -->
                     <div class="ct-order-meta hidden" id="order-meta-<?php echo $order['order_id']; ?>">
                         <div>
                             <p class="ct-order-meta-label">Payment Status</p>
@@ -334,8 +482,10 @@ window.addEventListener('DOMContentLoaded', () => {
     margin-bottom:16px; padding:14px 16px;
     background:linear-gradient(135deg,#fffbeb,#fef3c7);
     border:1px solid #fde68a; border-radius:12px;
+    max-height: 150px; overflow-y: auto;
 }
 .im-notes-title { font-size:12px; font-weight:800; color:#92400e; margin-bottom:6px; }
+.im-notes-text { font-size:13px; color:#b45309; line-height:1.6; overflow-wrap: anywhere; word-break: break-word; }
 
 /* Design thumb */
 .im-design-thumb { max-width:100px; border-radius:8px; border:2px solid #e2e8f0; display:block; margin-top:6px; cursor:zoom-in; transition:transform 0.2s; }
@@ -343,7 +493,11 @@ window.addEventListener('DOMContentLoaded', () => {
 
 /* Custom chips */
 .im-chips { display:flex; flex-wrap:wrap; gap:5px; margin-top:5px; }
-.im-chip { background:#e0e7ff; color:#4338ca; border-radius:99px; padding:2px 9px; font-size:11px; font-weight:600; }
+.im-chip { 
+    background:#e0e7ff; color:#4338ca; border-radius:99px; padding:2px 9px; 
+    font-size:11px; font-weight:600; 
+    overflow-wrap: anywhere; word-break: break-word; white-space: normal;
+}
 
 /* Status badges */
 .im-badge { display:inline-block; padding:2px 10px; border-radius:99px; font-size:11px; font-weight:700; }
@@ -362,6 +516,53 @@ window.addEventListener('DOMContentLoaded', () => {
     animation:im-spin 0.7s linear infinite; margin:0 auto 10px;
 }
 @keyframes im-spin { to { transform:rotate(360deg); } }
+
+/* ── Cancel Order Modal ─────────────────────────────────── */
+#cancelModal {
+    position:fixed; inset:0; z-index:10000;
+    display:flex; align-items:center; justify-content:center;
+    padding:16px; opacity:0; pointer-events:none;
+    transition:opacity 0.2s ease;
+}
+#cancelModal.open { opacity:1; pointer-events:all; }
+.cm-backdrop { position:absolute; inset:0; background:rgba(15,23,42,0.6); backdrop-filter:blur(4px); }
+.cm-panel {
+    position:relative; z-index:1; background:#fff; border-radius:20px;
+    width:100%; max-width:400px; padding:24px;
+    box-shadow:0 20px 50px rgba(0,0,0,0.3);
+    transform:scale(0.95); transition:transform 0.2s;
+}
+#cancelModal.open .cm-panel { transform:scale(1); }
+.cm-title { font-size:1.25rem; font-weight:800; color:#0f172a; margin-bottom:8px; }
+.cm-sub { font-size:0.9rem; color:#64748b; margin-bottom:20px; line-height:1.5; }
+
+.cm-options { display:flex; flex-direction:column; gap:10px; margin-bottom:20px; }
+.cm-opt {
+    display:flex; align-items:center; gap:10px; padding:12px 14px;
+    border:1px solid #e2e8f0; border-radius:12px; cursor:pointer;
+    transition:background 0.1s, border-color 0.1s;
+}
+.cm-opt:hover { background:#f8fafc; }
+.cm-opt.active { background:#f0f7ff; border-color:#3b82f6; }
+.cm-opt input { display:none; }
+.cm-opt-text { font-size:14px; font-weight:600; color:#1e293b; }
+
+#cmOtherInput {
+    width:100%; margin-top:10px; padding:10px;
+    border:1px solid #e2e8f0; border-radius:8px; font-size:13px;
+    display:none;
+}
+.cm-btns { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.cm-btn-cancel {
+    padding:12px; border-radius:12px; background:#f1f5f9; color:#64748b;
+    font-weight:700; font-size:14px; border:none; cursor:pointer;
+}
+.cm-btn-confirm {
+    padding:12px; border-radius:12px; background:#ef4444; color:#fff;
+    font-weight:700; font-size:14px; border:none; cursor:pointer;
+    box-shadow:0 4px 12px rgba(239,68,68,0.25);
+}
+.cm-btn-confirm:disabled { opacity:0.5; cursor:not-allowed; }
 </style>
 
 <div id="itemsModal" role="dialog" aria-modal="true">
@@ -376,6 +577,31 @@ window.addEventListener('DOMContentLoaded', () => {
         </div>
         <div class="im-body" id="imBody">
             <div class="im-loader"><div class="im-spinner"></div></div>
+        </div>
+    </div>
+</div>
+
+<!-- Cancel Order Modal -->
+<div id="cancelModal" role="dialog" aria-modal="true">
+    <div class="cm-backdrop" onclick="closeCancelModal()"></div>
+    <div class="cm-panel">
+        <div class="cm-title">Cancel Order</div>
+        <p class="cm-sub">Please select a reason for cancelling your order. This helps us improve our service.</p>
+        
+        <div class="cm-options">
+            <label class="cm-opt"><input type="radio" name="cancel_reason" value="Change of mind"><span class="cm-opt-text">Change of mind</span></label>
+            <label class="cm-opt"><input type="radio" name="cancel_reason" value="Incorrect order details"><span class="cm-opt-text">Incorrect order details</span></label>
+            <label class="cm-opt"><input type="radio" name="cancel_reason" value="Budget concerns"><span class="cm-opt-text">Budget concerns</span></label>
+            <label class="cm-opt"><input type="radio" name="cancel_reason" value="Found another provider"><span class="cm-opt-text">Found another provider</span></label>
+            <label class="cm-opt"><input type="radio" name="cancel_reason" value="Urgent order / Long processing time"><span class="cm-opt-text">Urgent order / Long processing time</span></label>
+            <label class="cm-opt"><input type="radio" name="cancel_reason" value="Payment issue"><span class="cm-opt-text">Payment issue</span></label>
+            <label class="cm-opt"><input type="radio" name="cancel_reason" value="Other"><span class="cm-opt-text">Other</span></label>
+            <textarea id="cmOtherInput" placeholder="Please specify your reason..."></textarea>
+        </div>
+
+        <div class="cm-btns">
+            <button class="cm-btn-cancel" onclick="closeCancelModal()">Back</button>
+            <button class="cm-btn-confirm" id="cmConfirmBtn" onclick="submitOrderCancellation()">Confirm Cancellation</button>
         </div>
     </div>
 </div>
@@ -420,27 +646,73 @@ function openItemsModal(orderId) {
         // ── Items table rows ──────────────────────────────────
         const rows = data.items.map(item => {
             let chips = '';
+            let itemNotes = '';
             if (item.customization && Object.keys(item.customization).length) {
-                chips = `<div class="im-chips">` +
-                    Object.entries(item.customization)
-                        .filter(([,v]) => v)
-                        .map(([k,v]) => `<span class="im-chip">${escIM(k.replace(/_/g,' '))}: ${escIM(String(v))}</span>`)
-                        .join('') + `</div>`;
+                let chipItems = '';
+                Object.entries(item.customization).forEach(([k, v]) => {
+                    if (!v || v === 'No' || v === 'None' || v === 'none') return;
+                    
+                    // Specific exclusions for Reflectorized Temporary Plates
+                    const isReflectorized = (item.category || '').toLowerCase().includes('reflectorized') || 
+                                           (item.customization.service_type || '').toLowerCase().includes('reflectorized');
+                    const isTempPlate = (item.customization.product_type || '').includes('Temporary Plate');
+                    const isGatePass = (item.customization.product_type || '').includes('Gate Pass');
+                    const exclusions = ['unit', 'bg_color', 'text_color', 'arrow_direction', 'quantity', 'material_type', 'shape', 'with_border', 'rounded_corners', 'with_numbering', 'install_service', 'need_proof', 'reflective_color', 'inches', 'quantity_gatepass', 'dimensions', 'product_type', 'service_type'];
+                    const gpOnlyExclusions = ['bg_color', 'text_color', 'reflective_color', 'text_content', 'arrow_direction', 'with_numbering', 'install_service', 'need_proof', 'temp_plate_text', 'product_type', 'dimensions', 'unit', 'shape', 'material_type', 'service_type'];
+                    
+                    if (isReflectorized && isTempPlate && (exclusions.includes(k) || v === 'inches')) return;
+                    if (isReflectorized && isGatePass && (gpOnlyExclusions.includes(k) || k === 'quantity_gatepass')) return;
+
+                    const label = k.replace(/_/g, ' ');
+                    
+                    // Skip if item note is same as global order note
+                    if (k.toLowerCase() === 'notes' && v === data.notes) return;
+                    if (k.toLowerCase() === 'notes' || k.toLowerCase().includes('description')) {
+                        itemNotes += `
+                            <div style="margin-top:8px; padding:10px; background:#fffbeb; border:1px solid #fef3c7; border-radius:8px;">
+                                <div style="font-size:10px; font-weight:800; color:#92400e; text-transform:uppercase; margin-bottom:4px;">📝 ${escIM(label)}</div>
+                                <div style="font-size:12px; color:#b45309; line-height:1.4; max-height:100px; overflow-y:auto; overflow-wrap:anywhere; word-break:break-word;">
+                                    ${escIM(String(v)).replace(/\n/g,'<br>')}
+                                </div>
+                            </div>`;
+                    } else {
+                        chipItems += `<span class="im-chip">${escIM(label)}: ${escIM(String(v))}</span>`;
+                    }
+                });
+                if (chipItems) chips = `<div class="im-chips">${chipItems}</div>`;
             }
             const design = item.has_design
-                ? `<a href="${escIM(item.design_url)}" target="_blank">
-                      <img src="${escIM(item.design_url)}" class="im-design-thumb"
-                           alt="Design"
-                           onerror="this.outerHTML='<span style=\\'color:#9ca3af;font-size:11px;\\'>⚠️ No preview</span>'">
-                   </a>`
-                : `<div style="font-size:11px;color:#9ca3af;margin-top:4px;">No design file</div>`;
+                ? `<div style="margin-top:8px;">
+                      <div style="font-size:9px;color:#94a3b8;font-weight:700;margin-bottom:3px;text-transform:uppercase;">Final Design</div>
+                      <a href="${escIM(item.design_url)}" target="_blank">
+                        <img src="${escIM(item.design_url)}" class="im-design-thumb"
+                             alt="Design"
+                             onerror="this.outerHTML='<span style=\\'color:#9ca3af;font-size:11px;\\'>⚠️ No preview</span>'">
+                      </a>
+                   </div>`
+                : `<div style="font-size:11px;color:#9ca3af;margin-top:8px;">No design file</div>`;
+
+            const reference = item.has_reference
+                ? `<div style="margin-top:8px;">
+                      <div style="font-size:9px;color:#94a3b8;font-weight:700;margin-bottom:3px;text-transform:uppercase;">Reference Image</div>
+                      <a href="${escIM(item.reference_url)}" target="_blank">
+                        <img src="${escIM(item.reference_url)}" class="im-design-thumb"
+                             alt="Reference"
+                             onerror="this.outerHTML='<span style=\\'color:#9ca3af;font-size:11px;\\'>⚠️ No preview</span>'">
+                      </a>
+                   </div>`
+                : '';
 
             return `<tr>
                 <td>
                     <div style="font-weight:700;color:#1e293b;">${escIM(item.product_name)}</div>
                     ${item.category ? `<div style="font-size:11px;color:#9ca3af;">${escIM(item.category)}</div>` : ''}
                     ${chips}
-                    ${design}
+                    ${itemNotes}
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                        ${design}
+                        ${reference}
+                    </div>
                 </td>
                 <td style="text-align:center;">${item.quantity}</td>
                 <td>${escIM(item.unit_price)}</td>
@@ -453,7 +725,7 @@ function openItemsModal(orderId) {
         if (data.notes) {
             notesHTML = `<div class="im-notes">
                 <div class="im-notes-title">📝 Your Order Notes</div>
-                <div style="font-size:13px;color:#b45309;">${escIM(data.notes).replace(/\n/g,'<br>')}</div>
+                <div class="im-notes-text">${escIM(data.notes).replace(/\n/g,'<br>')}</div>
             </div>`;
         }
 
@@ -517,13 +789,145 @@ function openItemsModal(orderId) {
                         </div>
                     </div>
                     ${cancelHTML}
+                    
+                    <!-- Design Review Status for Customer -->
+                    <div style="margin-top:16px; padding:15px; border-radius:12px; background:#fff; border:1px solid #e2e8f0; box-shadow:0 2px 4px rgba(0,0,0,0.02);">
+                        <div style="font-size:11px; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:10px;">Design Review Status</div>
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span style="font-size:13.5px; font-weight:600; color:#334155;">Status:</span>
+                            ${imBadge(data.design_status || 'Pending')}
+                        </div>
+                        
+                        ${data.design_status === 'Revision Requested' ? `
+                            <div style="margin-top:12px; padding:12px; background:#eff6ff; border:1px solid #dbeafe; border-radius:10px;">
+                                <div style="font-weight:700; color:#2563eb; font-size:12px; margin-bottom:4px;">Revision Reason:</div>
+                                <div style="font-size:12px; color:#1e40af; line-height:1.4;">${escIM(data.revision_reason)}</div>
+                            </div>
+                            <div style="margin-top:14px;">
+                                <button onclick="triggerDesignReupload(${data.order_id})" style="width:100%; padding:12px; background:#4f46e5; color:#fff; border:none; border-radius:10px; font-weight:700; font-size:13px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+                                    <span>📤 Re-upload New Design</span>
+                                </button>
+                                <input type="file" id="designReuploadInput-${data.order_id}" style="display:none;" onchange="handleDesignReupload(this, ${data.order_id}, '${data.csrf_token}')" accept="image/*,application/pdf">
+                            </div>
+                        ` : ''}
+
+                        ${data.design_status === 'Approved' ? `
+                            <div style="margin-top:10px; text-align:center; color:#16a34a; font-size:12px; font-weight:600;">
+                                ✅ Your design has been approved for production.
+                            </div>
+                        ` : ''}
+                    </div>
+
                     ${revisionHTML}
+
+                    <div id="imCancelSection" style="margin-top:20px; padding-top:20px; border-top:1px solid #f1f5f9;">
+                        ${data.can_cancel 
+                            ? `<button class="im-cancel-trigger-btn" onclick="openCancelModal(${data.order_id}, '${data.csrf_token}')" 
+                                       style="width:100%; padding:14px; background:#fff; border:2px solid #fee2e2; border-radius:12px; color:#ef4444; font-weight:800; font-size:14px; cursor:pointer; transition:all 0.2s;">
+                                   Cancel Order
+                               </button>`
+                            : (data.cancel_restriction_msg 
+                                ? `<div style="padding:14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; color:#94a3b8; font-size:13px; text-align:center; font-weight:600;">
+                                       ${escIM(data.cancel_restriction_msg)}
+                                   </div>`
+                                : '')
+                        }
+                    </div>
                 </div>
             </div>`;
     })
     .catch(() => {
         document.getElementById('imBody').innerHTML =
             `<p style="color:#ef4444;font-size:13px;">Failed to load. Please try again.</p>`;
+    });
+}
+
+// ── Cancellation Logic ───────────────────────────────────
+let cancelOrderId = null;
+let cancelCsrfToken = null;
+
+function openCancelModal(orderId, csrfToken) {
+    cancelOrderId = orderId;
+    cancelCsrfToken = csrfToken;
+    const modal = document.getElementById('cancelModal');
+    modal.classList.add('open');
+    
+    // Reset options
+    document.querySelectorAll('.cm-opt').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('input[name="cancel_reason"]').forEach(rb => rb.checked = false);
+    document.getElementById('cmOtherInput').style.display = 'none';
+    document.getElementById('cmOtherInput').value = '';
+    document.getElementById('cmConfirmBtn').disabled = true;
+}
+
+function closeCancelModal() {
+    document.getElementById('cancelModal').classList.remove('open');
+    cancelOrderId = null;
+    cancelCsrfToken = null;
+}
+
+// Handle radio button clicks
+document.addEventListener('change', e => {
+    if (e.target.name === 'cancel_reason') {
+        const opts = document.querySelectorAll('.cm-opt');
+        opts.forEach(opt => {
+            const radio = opt.querySelector('input');
+            opt.classList.toggle('active', radio.checked);
+        });
+        
+        const otherInput = document.getElementById('cmOtherInput');
+        otherInput.style.display = (e.target.value === 'Other') ? 'block' : 'none';
+        
+        document.getElementById('cmConfirmBtn').disabled = false;
+    }
+});
+
+function submitOrderCancellation() {
+    const reasonEl = document.querySelector('input[name="cancel_reason"]:checked');
+    if (!reasonEl) return;
+    
+    const reason = reasonEl.value;
+    const details = document.getElementById('cmOtherInput').value;
+    
+    if (reason === 'Other' && !details.trim()) {
+        alert("Please specify your reason.");
+        return;
+    }
+
+    const btn = document.getElementById('cmConfirmBtn');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Processing…';
+
+    const fd = new FormData();
+    fd.append('ajax', '1');
+    fd.append('order_id', cancelOrderId);
+    fd.append('csrf_token', cancelCsrfToken);
+    fd.append('reason', reason);
+    fd.append('details', details);
+
+    fetch('/printflow/customer/cancel_order.php', {
+        method: 'POST',
+        body: fd
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            closeCancelModal();
+            closeItemsModal();
+            // Show success alert and refresh
+            alert("Order #" + cancelOrderId + " has been cancelled.");
+            window.location.reload();
+        } else {
+            alert(data.error || "Failed to cancel order.");
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
+    })
+    .catch(() => {
+        alert("A network error occurred.");
+        btn.disabled = false;
+        btn.textContent = originalText;
     });
 }
 
@@ -550,11 +954,60 @@ function closeItemsModal() {
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeItemsModal(); });
 
+function triggerDesignReupload(orderId) {
+    document.getElementById('designReuploadInput-' + orderId).click();
+}
+
+function handleDesignReupload(input, orderId, csrfToken) {
+    if (!input.files || !input.files[0]) return;
+    
+    const file = input.files[0];
+    if (!confirm(`Are you sure you want to upload "${file.name}" as your new design?`)) {
+        input.value = '';
+        return;
+    }
+
+    const fd = new FormData();
+    fd.append('order_id', orderId);
+    fd.append('csrf_token', csrfToken);
+    fd.append('design_file', file);
+
+    // Show loading state
+    const btn = input.previousElementSibling;
+    const originalContent = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span>Uploading...</span>';
+
+    fetch('/printflow/customer/reupload_design_process.php', {
+        method: 'POST',
+        body: fd
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            alert('Design successfully re-uploaded! The staff will review it shortly.');
+            window.location.reload();
+        } else {
+            alert(res.error || 'Failed to upload design');
+            btn.disabled = false;
+            btn.innerHTML = originalContent;
+            input.value = '';
+        }
+    })
+    .catch(() => {
+        alert('Network error occurred');
+        btn.disabled = false;
+        btn.innerHTML = originalContent;
+        input.value = '';
+    });
+}
+
 function escIM(str) {
     return String(str || '')
         .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 </script>
 
+<?php include __DIR__ . '/../includes/order_chat.php'; ?>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
 

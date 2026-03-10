@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resubmit_order'])) {
 
     // Process each item modification
     foreach ($items as $item) {
-        $item_id = $item['item_id'];
+        $item_id = $item['order_item_id'];
         
         // Collect customization data
         $customization = [];
@@ -89,21 +89,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resubmit_order'])) {
 
         // Update Order Item
         if ($design_binary) {
-            $stmt = $conn->prepare("UPDATE order_items SET customization_data = ?, design_image = ?, design_image_mime = ?, design_image_name = ? WHERE item_id = ?");
+            $stmt = $conn->prepare("UPDATE order_items SET customization_data = ?, design_image = ?, design_image_mime = ?, design_image_name = ? WHERE order_item_id = ?");
             $null = NULL;
             $stmt->bind_param('sbssi', $custom_json, $null, $design_mime, $design_name, $item_id);
             $stmt->send_long_data(1, $design_binary);
             if (!$stmt->execute()) $all_success = false;
             $stmt->close();
         } else {
-            $success = db_execute("UPDATE order_items SET customization_data = ? WHERE item_id = ?", 'si', [$custom_json, $item_id]);
+            $success = db_execute("UPDATE order_items SET customization_data = ? WHERE order_item_id = ?", 'si', [$custom_json, $item_id]);
             if (!$success) $all_success = false;
         }
     }
 
     if ($all_success) {
         // Update Order Status
-        $update_sql = "UPDATE orders SET status = 'Pending Approval', revision_count = revision_count + 1, updated_at = NOW() WHERE order_id = ?";
+        $update_sql = "UPDATE orders SET status = 'Pending Approval', design_status = 'Revision Submitted', revision_count = revision_count + 1, updated_at = NOW() WHERE order_id = ?";
         db_execute($update_sql, 'i', [$order_id]);
 
         log_activity($customer_id, 'Order Resubmitted', "Customer resubmitted Order #$order_id after revision.");
@@ -111,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resubmit_order'])) {
         // Notify Staff
         $staff_users = db_query("SELECT user_id FROM users WHERE role = 'Staff' AND status = 'Activated'");
         foreach ($staff_users as $staff) {
-            create_notification($staff['user_id'], 'Staff', "Order #{$order_id} has been resubmitted for approval!", 'Order', false);
+            create_notification($staff['user_id'], 'Staff', "Order #{$order_id} has been resubmitted for approval!", 'Order', false, false, $order_id);
         }
 
         $_SESSION['success'] = "Order #{$order_id} has been resubmitted successfully. Please wait for staff approval.";
@@ -151,7 +151,7 @@ require_once __DIR__ . '/../includes/header.php';
 
             <?php foreach ($items as $item): 
                 $custom_data = json_decode($item['customization_data'], true) ?? [];
-                $prefix = "item_{$item['item_id']}_";
+                $prefix = "item_{$item['order_item_id']}_";
             ?>
                 <div class="card" style="margin-bottom:2rem;">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.5rem; border-bottom:1px solid #f3f4f6; padding-bottom:1rem;">
@@ -232,12 +232,12 @@ require_once __DIR__ . '/../includes/header.php';
                                     <div style="display:flex; align-items:center; gap:1rem;">
                                         <?php if (!empty($item['design_image'])): ?>
                                             <div style="position:relative; width:80px; height:80px; border-radius:8px; overflow:hidden; border:1px solid #e5e7eb;">
-                                                <img src="/printflow/public/serve_design.php?type=order_item&id=<?php echo (int)$item['item_id']; ?>" style="width:100%; height:100%; object-fit:cover;" alt="Old Design">
+                                                <img src="/printflow/public/serve_design.php?type=order_item&id=<?php echo (int)$item['order_item_id']; ?>" style="width:100%; height:100%; object-fit:cover;" alt="Old Design">
                                                 <div style="position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.6); color:white; font-size:0.6rem; text-align:center; padding:2px;">Current</div>
                                             </div>
                                         <?php endif; ?>
                                         <div style="flex:1;">
-                                            <input type="file" name="design_<?php echo $item['item_id']; ?>" class="input-field" accept=".jpg,.jpeg,.png" style="padding:0.4rem;">
+                                            <input type="file" name="design_<?php echo $item['order_item_id']; ?>" class="input-field" accept=".jpg,.jpeg,.png" style="padding:0.4rem;">
                                             <p style="font-size:0.7rem; color:#6b7280; margin-top:4px;">Upload ONLY if you want to replace the current design.</p>
                                         </div>
                                     </div>

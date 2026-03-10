@@ -87,6 +87,7 @@ $page_title = "Order #{$order_id} - Staff";
     <title><?php echo $page_title; ?></title>
     <link rel="stylesheet" href="/printflow/public/assets/css/output.css">
     <?php include __DIR__ . '/../includes/admin_style.php'; ?>
+    <link rel="stylesheet" href="/printflow/public/assets/css/chat.css">
     <style>
         .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
         @media (max-width: 900px) { .detail-grid { grid-template-columns: 1fr; } }
@@ -109,12 +110,18 @@ $page_title = "Order #{$order_id} - Staff";
     <?php include __DIR__ . '/../includes/staff_sidebar.php'; ?>
 
     <div class="main-content">
-        <header>
-            <div>
-                <a href="orders" class="back-link">← Back to Orders</a>
-                <h1 class="page-title" style="margin-top:4px;">Order #<?php echo $order_id; ?></h1>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <a href="orders" class="back-link">← Back to Orders</a>
+                    <h1 class="page-title" style="margin-top:4px;">Order #<?php echo $order_id; ?></h1>
+                </div>
+                <button type="button" onclick="openOrderChat(<?php echo $order_id; ?>, '<?php echo $order_id; ?>')" class="btn-primary" style="background:#4F46E5; color:white; border:none; padding:10px 20px; border-radius:10px; font-weight:700; display:inline-flex; align-items:center; gap:8px; box-shadow:0 4px 6px -1px rgba(79,70,229,0.2);">
+                    💬 Message Customer
+                </button>
             </div>
         </header>
+
+        <?php include __DIR__ . '/../includes/order_chat.php'; ?>
 
         <main>
             <?php if ($success): ?>
@@ -124,7 +131,7 @@ $page_title = "Order #{$order_id} - Staff";
                 <div class="alert-error"><?php echo htmlspecialchars($error); ?></div>
             <?php endif; ?>
 
-            <div class="detail-grid">
+            <div class="detail-grid" style="grid-template-columns: repeat(3, 1fr);">
                 <!-- Order Information -->
                 <div class="card">
                     <h2 style="font-size:18px; font-weight:600; margin-bottom:20px;">Order Information</h2>
@@ -189,134 +196,9 @@ $page_title = "Order #{$order_id} - Staff";
                         </div>
                     </div>
                     <?php endif; ?>
-
-                    <!-- Update Status Form -->
-                    <!-- Update Status Form -->
-                    <div style="margin-top:20px; padding-top:20px; border-top:1px solid #f3f4f6;">
-                        <h3 style="font-size:14px; font-weight:600; margin-bottom:12px;">Order Management</h3>
-                        <div style="display:flex; flex-direction:column; gap:12px;">
-                            <form method="POST" style="display:flex; gap:10px;">
-                                <?php echo csrf_field(); ?>
-                                <input type="hidden" name="update_status" value="1">
-                                <select name="status" class="input-field" style="flex:1;">
-                                    <option value="Pending" <?php echo $order['status'] === 'Pending' ? 'selected' : ''; ?>>Pending</option>
-                                    <option value="Pending Approval" <?php echo $order['status'] === 'Pending Approval' ? 'selected' : ''; ?>>Pending Approval</option>
-                                    <option value="In Production" <?php echo $order['status'] === 'In Production' ? 'selected' : ''; ?>>In Production</option>
-                                    <option value="Printing" <?php echo $order['status'] === 'Printing' ? 'selected' : ''; ?>>Printing</option>
-                                    <option value="Completed" <?php echo $order['status'] === 'Completed' ? 'selected' : ''; ?>>Completed</option>
-                                </select>
-                                <button type="submit" class="btn-primary">Update Status</button>
-                            </form>
-
-                            <?php if (!in_array($order['status'], ['In Production', 'Printing', 'Completed', 'Cancelled'])): ?>
-                                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-                                    <button type="button" onclick="openRevisionModal()" class="btn-secondary" style="color:#d97706; border-color:#fde68a; justify-content:center;">
-                                        📋 Request Revision
-                                    </button>
-                                    <button type="button" onclick="openStaffCancelModal()" class="btn-secondary" style="color:#dc2626; border-color:#fecaca; justify-content:center;">
-                                        ✕ Cancel Order
-                                    </button>
-                                </div>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-
-                    <!-- Request Revision Modal -->
-                    <div id="revisionModal" class="modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; padding:20px;">
-                        <div class="card" style="max-width:500px; width:100%; position:relative; background:white; padding:1.5rem; border-radius:12px;">
-                            <h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1rem; color:#111827;">Request Revision #<?php echo $order_id; ?></h2>
-                            <p style="color:#6b7280; font-size:0.875rem; margin-bottom:1.5rem;">Tell the customer what needs to be fixed. They will be allowed to edit and resubmit their order.</p>
-                            
-                            <form action="request_revision_process.php" method="POST">
-                                <?php echo csrf_field(); ?>
-                                <input type="hidden" name="order_id" value="<?php echo $order_id; ?>">
-                                
-                                <div style="margin-bottom:1.5rem;">
-                                    <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.75rem;">Reason for Revision *</label>
-                                    <textarea name="revision_reason" class="input-field" style="width:100%; min-height:100px; font-size:0.9rem;" placeholder="e.g. Blurry image, wrong size specified, missing placement notes..." required></textarea>
-                                </div>
-                                
-                                <div style="display:flex; justify-content:flex-end; gap:12px;">
-                                    <button type="button" onclick="closeRevisionModal()" class="btn-secondary">Close</button>
-                                    <button type="submit" class="btn-primary" style="background:#d97706; color:white; border:none;">Send Request</button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-
-                    <!-- Staff Cancellation Modal -->
-                    <div id="staffCancelModal" class="modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; padding:20px;">
-                        <div class="card" style="max-width:500px; width:100%; position:relative; background:white; padding:1.5rem; border-radius:12px;">
-                            <h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1rem; color:#111827;">Cancel Order #<?php echo $order_id; ?></h2>
-                            <p style="color:#6b7280; font-size:0.875rem; margin-bottom:1rem;">Are you sure you want to cancel this order? This action cannot be undone.</p>
-                            <p style="color:#dc2626; font-size:0.875rem; font-weight:600; margin-bottom:1.5rem;">⚠️ A cancellation reason is REQUIRED. This will be visible to the customer.</p>
-                            
-                            <form action="cancel_order_process.php" method="POST">
-                                <?php echo csrf_field(); ?>
-                                <input type="hidden" name="order_id" value="<?php echo $order_id; ?>">
-                                
-                                <div style="margin-bottom:1.5rem;">
-                                    <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.75rem;">Reason for Cancellation *</label>
-                                    <select name="reason" class="input-field" required style="width:100%;">
-                                        <option value="">-- Select a Reason --</option>
-                                        <option value="Invalid design file">Invalid design file</option>
-                                        <option value="Blurry or low-quality image">Blurry or low-quality image</option>
-                                        <option value="Offensive or prohibited content">Offensive or prohibited content</option>
-                                        <option value="Payment not verified">Payment not verified</option>
-                                        <option value="Out of stock materials">Out of stock materials</option>
-                                        <option value="Fraudulent order">Fraudulent order</option>
-                                        <option value="Other">Other</option>
-                                    </select>
-                                </div>
-                                
-                                <div style="margin-bottom:1.5rem;">
-                                    <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.5rem;">Additional Notes (Optional)</label>
-                                    <textarea name="notes" class="input-field" style="width:100%; min-height:80px; font-size:0.9rem;" placeholder="Public notes for the customer..."></textarea>
-                                </div>
-                                
-                                <div style="display:flex; justify-content:flex-end; gap:12px;">
-                                    <button type="button" onclick="closeStaffCancelModal()" class="btn-secondary">Close</button>
-                                    <button type="submit" name="staff_cancel" class="btn-primary" style="background:#dc2626; color:white; border:none;">Confirm Cancellation</button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-
-                    <script>
-                        function openStaffCancelModal() {
-                            document.getElementById('staffCancelModal').style.display = 'flex';
-                            document.body.style.overflow = 'hidden';
-                        }
-                        function closeStaffCancelModal() {
-                            document.getElementById('staffCancelModal').style.display = 'none';
-                            document.body.style.overflow = 'auto';
-                        }
-                        function openRevisionModal() {
-                            document.getElementById('revisionModal').style.display = 'flex';
-                            document.body.style.overflow = 'hidden';
-                        }
-                        function closeRevisionModal() {
-                            document.getElementById('revisionModal').style.display = 'none';
-                            document.body.style.overflow = 'auto';
-                        }
-
-                        // Trigger success modal if success message exists
-                        window.addEventListener('DOMContentLoaded', () => {
-                            <?php if ($success): ?>
-                            showSuccessModal(
-                                '✅ Action Completed',
-                                '<?php echo addslashes($success); ?>',
-                                'orders.php',
-                                'dashboard.php',
-                                'View Orders List',
-                                'Go to Dashboard'
-                            );
-                            <?php endif; ?>
-                        });
-                    </script>
                 </div>
 
-                <!-- Customer Information (Read-Only) -->
+                <!-- Customer Information -->
                 <div class="card">
                     <h2 style="font-size:18px; font-weight:600; margin-bottom:20px;">Customer Information</h2>
                     <div class="customer-card">
@@ -339,7 +221,7 @@ $page_title = "Order #{$order_id} - Staff";
 
                     <?php if (!empty($customer_orders)): ?>
                     <div style="margin-top:20px;">
-                        <h3 style="font-size:14px; font-weight:600; margin-bottom:12px;">Other Orders from Customer</h3>
+                        <h3 style="font-size:14px; font-weight:600; margin-bottom:12px;">Other Orders</h3>
                         <?php foreach ($customer_orders as $co): ?>
                         <div class="detail-row">
                             <span>
@@ -352,6 +234,89 @@ $page_title = "Order #{$order_id} - Staff";
                     </div>
                     <?php endif; ?>
                 </div>
+
+                <!-- Order Management -->
+                <div class="card">
+                    <h3 style="font-size:14px; font-weight:600; margin-bottom:12px;">Order Management</h3>
+                    <div style="display:flex; flex-direction:column; gap:12px;">
+                        <form method="POST" style="display:flex; flex-direction:column; gap:10px;">
+                            <?php echo csrf_field(); ?>
+                            <input type="hidden" name="update_status" value="1">
+                            <select name="status" class="input-field">
+                                <option value="Pending" <?php echo $order['status'] === 'Pending' ? 'selected' : ''; ?>>Pending</option>
+                                <option value="Pending Approval" <?php echo $order['status'] === 'Pending Approval' ? 'selected' : ''; ?>>Pending Approval</option>
+                                <option value="In Production" <?php echo $order['status'] === 'In Production' ? 'selected' : ''; ?>>In Production</option>
+                                <option value="Printing" <?php echo $order['status'] === 'Printing' ? 'selected' : ''; ?>>Printing</option>
+                                <option value="Completed" <?php echo $order['status'] === 'Completed' ? 'selected' : ''; ?>>Completed</option>
+                            </select>
+                            <button type="submit" class="btn-primary">Update Status</button>
+                        </form>
+
+                        <?php if (!in_array($order['status'], ['In Production', 'Printing', 'Completed', 'Cancelled'])): ?>
+                            <div style="display:grid; grid-template-columns: 1fr; gap:10px;">
+                                <button type="button" onclick="openRevisionModal()" class="btn-secondary" style="color:#d97706; border-color:#fde68a; justify-content:center;">
+                                    📋 Request Revision
+                                </button>
+                                <button type="button" onclick="openStaffCancelModal()" class="btn-secondary" style="color:#dc2626; border-color:#fecaca; justify-content:center;">
+                                    ✕ Cancel Order
+                                </button>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- Revision Modal -->
+                    <div id="revisionModal" class="modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; padding:20px;">
+                        <div class="card" style="max-width:500px; width:100%; position:relative; background:white; padding:1.5rem; border-radius:12px;">
+                            <h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1rem; color:#111827;">Request Revision #<?php echo $order_id; ?></h2>
+                            <p style="color:#6b7280; font-size:0.875rem; margin-bottom:1.5rem;">Tell the customer what needs to be fixed.</p>
+                            <form action="request_revision_process.php" method="POST">
+                                <?php echo csrf_field(); ?>
+                                <input type="hidden" name="order_id" value="<?php echo $order_id; ?>">
+                                <div style="margin-bottom:1.5rem;">
+                                    <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.75rem;">Reason for Revision *</label>
+                                    <textarea name="revision_reason" class="input-field" style="width:100%; min-height:100px; font-size:0.9rem;" required></textarea>
+                                </div>
+                                <div style="display:flex; justify-content:flex-end; gap:12px;">
+                                    <button type="button" onclick="closeRevisionModal()" class="btn-secondary">Close</button>
+                                    <button type="submit" class="btn-primary" style="background:#d97706;">Send Request</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Cancel Modal -->
+                    <div id="staffCancelModal" class="modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; padding:20px;">
+                        <div class="card" style="max-width:500px; width:100%; position:relative; background:white; padding:1.5rem; border-radius:12px;">
+                            <h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1rem; color:#111827;">Cancel Order #<?php echo $order_id; ?></h2>
+                            <form action="cancel_order_process.php" method="POST">
+                                <?php echo csrf_field(); ?>
+                                <input type="hidden" name="order_id" value="<?php echo $order_id; ?>">
+                                <div style="margin-bottom:1.5rem;">
+                                    <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.75rem;">Reason for Cancellation *</label>
+                                    <select name="reason" class="input-field" required>
+                                        <option value="">-- Select a Reason --</option>
+                                        <option value="Invalid design file">Invalid design file</option>
+                                        <option value="Low quality">Low quality</option>
+                                        <option value="Out of stock">Out of stock</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                                <div style="display:flex; justify-content:flex-end; gap:12px;">
+                                    <button type="button" onclick="closeStaffCancelModal()" class="btn-secondary">Close</button>
+                                    <button type="submit" name="staff_cancel" class="btn-primary" style="background:#dc2626;">Confirm</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <script>
+                        function openStaffCancelModal() { document.getElementById('staffCancelModal').style.display = 'flex'; }
+                        function closeStaffCancelModal() { document.getElementById('staffCancelModal').style.display = 'none'; }
+                        function openRevisionModal() { document.getElementById('revisionModal').style.display = 'flex'; }
+                        function closeRevisionModal() { document.getElementById('revisionModal').style.display = 'none'; }
+                    </script>
+                </div>
+            </div>
             </div>
 
             <!-- Order Items -->
@@ -378,62 +343,74 @@ $page_title = "Order #{$order_id} - Staff";
                                     <td style="font-weight:500;">
                                         <?php echo htmlspecialchars($item['product_name'] ?? 'Unknown'); ?>
                                         <?php if ($item['customization_data'] || !empty($item['design_image'])): ?>
-                                            <div style="margin-top:1rem; font-size:0.8rem; background:#f9fafb; padding:1rem; border-radius:12px; border:1px solid #e5e7eb;">
-                                                <div style="font-weight:800; color:#374151; margin-bottom:0.75rem; text-transform:uppercase; letter-spacing:0.05em; font-size: 0.7rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px;">
-                                                    Customization Details
-                                                </div>
-                                                <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap:0.75rem;">
-                                                    <?php 
-                                                    $custom_data = json_decode($item['customization_data'], true);
-                                                    if ($custom_data):
-                                                        foreach ($custom_data as $key => $val):
-                                                            if (!empty($val) && $key !== 'design_upload'):
-                                                    ?>
-                                                        <div>
-                                                            <div style="color:#9ca3af; font-size: 0.65rem; text-transform: uppercase; font-weight: 700;"><?php echo ucwords(str_replace('_', ' ', $key)); ?></div>
-                                                            <div style="font-weight:600; color: #111827;"><?php echo htmlspecialchars($val); ?></div>
+                                                <div style="display: flex; gap: 2rem; align-items: stretch; justify-content: center;">
+                                                    <!-- Left: Customization Details Grid -->
+                                                    <div style="flex: 1.8; min-width: 0;">
+                                                        <div style="font-weight:800; color:#475569; margin-bottom:1rem; text-transform:uppercase; letter-spacing:0.05em; font-size: 0.8rem; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px;">
+                                                            Customization Details
                                                         </div>
-                                                    <?php 
-                                                            endif;
-                                                        endforeach;
-                                                    endif; 
-                                                    ?>
-                                                </div>
-                                                
-                                                <?php if (!empty($item['design_image'])): ?>
-                                                    <div style="margin-top:1.25rem; padding-top:12px; border-top:1px dashed #d1d5db;">
-                                                        <div style="font-weight:800; color:#374151; margin-bottom:0.75rem; font-size: 0.7rem; text-transform: uppercase;">Customer Design</div>
-                                                        <div style="display: flex; gap: 1rem; align-items: flex-start;">
-                                                            <a href="/printflow/public/serve_design.php?type=order_item&id=<?php echo (int)$item['order_item_id']; ?>" target="_blank" style="display: block; border-radius: 8px; overflow: hidden; border: 2px solid white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
-                                                                <img src="/printflow/public/serve_design.php?type=order_item&id=<?php echo (int)$item['order_item_id']; ?>"
-                                                                     style="max-width:180px; display: block; cursor: zoom-in; transition: transform 0.2s;"
-                                                                     onmouseover="this.style.transform='scale(1.02)'"
-                                                                     onmouseout="this.style.transform='scale(1)'"
-                                                                     alt="Customer Design"
-                                                                     onerror="this.outerHTML='<span style=\'color:#6b7280;font-size:0.8rem;\'>⚠️ Could not load image</span>'">
-                                                            </a>
-                                                            <div style="flex: 1;">
-                                                                <div style="font-size:0.8rem; font-weight:700; color:#059669; display: flex; align-items: center; gap: 4px;">
-                                                                    ✅ Design File Ready
+                                                        <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:1rem;">
+                                                            <?php 
+                                                            $custom_data = json_decode($item['customization_data'], true);
+                                                            $description = '';
+                                                            if ($custom_data):
+                                                                foreach ($custom_data as $key => $val):
+                                                                    if (!empty($val) && $key !== 'design_upload' && $key !== 'reference_upload'):
+                                                                        if (strpos(strtolower($key), 'description') !== false):
+                                                                            $description = $val;
+                                                                            continue;
+                                                                        endif;
+                                                            ?>
+                                                                <div style="padding: 6px 0;">
+                                                                    <div style="color:#94a3b8; font-size: 0.75rem; text-transform: uppercase; font-weight: 800; letter-spacing: 0.025em;"><?php echo ucwords(str_replace('_', ' ', $key)); ?></div>
+                                                                    <div style="font-weight:700; color: #1e293b; font-size: 1rem;"><?php echo htmlspecialchars($val); ?></div>
                                                                 </div>
-                                                                <?php if (!empty($item['design_image_name'])): ?>
-                                                                    <div style="font-size:0.75rem; color:#6b7280; margin-top:4px; word-break: break-all;">
-                                                                        <?php echo htmlspecialchars($item['design_image_name']); ?>
-                                                                    </div>
-                                                                <?php endif; ?>
-                                                                <div style="margin-top: 10px;">
-                                                                    <a href="/printflow/public/serve_design.php?type=order_item&id=<?php echo (int)$item['order_item_id']; ?>" target="_blank" class="btn-secondary" style="font-size: 0.75rem; padding: 4px 10px;">
-                                                                        View Full Size
-                                                                    </a>
+                                                            <?php 
+                                                                    endif;
+                                                                endforeach;
+                                                            endif; 
+                                                            ?>
+                                                        </div>
+
+                                                        <?php if ($description): ?>
+                                                            <div style="margin-top: 1.25rem; padding: 16px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 10px;">
+                                                                <div style="font-size: 0.75rem; font-weight: 800; color: #92400e; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.05em;">📝 Design Description</div>
+                                                                <div style="font-size: 0.95rem; color: #b45309; line-height: 1.6; font-weight: 600;">
+                                                                    <?php echo nl2br(htmlspecialchars($description)); ?>
                                                                 </div>
                                                             </div>
-                                                        </div>
+                                                        <?php endif; ?>
                                                     </div>
-                                                <?php else: ?>
-                                                    <div style="margin-top:1rem; font-size:0.8rem; color:#9ca3af; display: flex; align-items: center; gap: 6px;">
-                                                        📂 No specific design file for this item.
+
+                                                    <!-- Right: Design & Reference Images -->
+                                                    <div style="flex: 1.2; min-width: 0; padding-left: 1.5rem; border-left: 2px dashed #f1f5f9; display: flex; flex-direction: column; gap: 1.5rem;">
+                                                        <?php if (!empty($item['design_image']) || !empty($item['design_file'])): ?>
+                                                            <div>
+                                                                <div style="font-weight:800; color:#475569; margin-bottom:0.75rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.025em;">Customer Design</div>
+                                                                <?php $design_url = "/printflow/public/serve_design.php?type=order_item&id=" . (int)$item['order_item_id']; ?>
+                                                                <a href="<?php echo $design_url; ?>" target="_blank" style="display: block; border-radius: 12px; overflow: hidden; border: 3px solid white; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);">
+                                                                    <img src="<?php echo $design_url; ?>" style="width:100%; height:auto; display: block;" alt="Customer Design">
+                                                                </a>
+                                                                <a href="<?php echo $design_url; ?>" target="_blank" style="display: inline-block; margin-top: 10px; font-size:0.8rem; font-weight:800; color:#059669; text-decoration: none; background: #ecfdf5; padding: 6px 14px; border-radius: 8px;">↗ View Full</a>
+                                                            </div>
+                                                        <?php endif; ?>
+
+                                                        <?php if (!empty($item['reference_image_file'])): ?>
+                                                            <div>
+                                                                <div style="font-weight:800; color:#475569; margin-bottom:0.75rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.025em;">Reference Image</div>
+                                                                <?php $ref_url = "/printflow/public/serve_design.php?type=order_item&id=" . (int)$item['order_item_id'] . "&field=reference"; ?>
+                                                                <a href="<?php echo $ref_url; ?>" target="_blank" style="display: block; border-radius: 12px; overflow: hidden; border: 3px solid white; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);">
+                                                                    <img src="<?php echo $ref_url; ?>" style="width:100%; height:auto; display: block;" alt="Reference Image">
+                                                                </a>
+                                                                <a href="<?php echo $ref_url; ?>" target="_blank" style="display: inline-block; margin-top: 10px; font-size:0.8rem; font-weight:800; color:#1e40af; text-decoration: none; background: #eff6ff; padding: 6px 14px; border-radius: 8px;">↗ View Full</a>
+                                                            </div>
+                                                        <?php endif; ?>
+
+                                                        <?php if (empty($item['design_image']) && empty($item['design_file']) && empty($item['reference_image_file'])): ?>
+                                                            <div style="font-size:0.8rem; color:#9ca3af; font-style: italic; background: #f8fafc; padding: 20px; border-radius: 12px; text-align: center;">No images uploaded</div>
+                                                        <?php endif; ?>
                                                     </div>
-                                                <?php endif; ?>
+                                                </div>
                                             </div>
                                         <?php endif; ?>
                                     </td>

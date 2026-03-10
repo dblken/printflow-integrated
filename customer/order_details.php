@@ -40,6 +40,8 @@ $page_title = "Order #{$order_id} - PrintFlow";
 $use_customer_css = true;
 require_once __DIR__ . '/../includes/header.php';
 ?>
+<link rel="stylesheet" href="/printflow/public/assets/css/chat.css">
+<?php include __DIR__ . '/../includes/order_chat.php'; ?>
 
 <div class="min-h-screen py-8">
     <div class="container mx-auto px-4" style="max-width:1100px;">
@@ -55,10 +57,20 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
             
             <div style="display:flex; gap:12px; align-items:center;">
+                <button type="button" onclick="openOrderChat(<?php echo $order_id; ?>, '<?php echo $order_id; ?>')" class="btn-primary" style="background:#4F46E5; color:white; border:none; padding:10px 20px; border-radius:10px; font-weight:700; display:inline-flex; align-items:center; gap:8px; box-shadow:0 4px 6px -1px rgba(79,70,229,0.2);">
+                    💬 Message Shop
+                </button>
+
                 <?php if ($order['status'] === 'For Revision'): ?>
                     <a href="edit_order.php?id=<?php echo $order_id; ?>" class="btn-primary" style="background:linear-gradient(135deg,#d97706,#f59e0b); color:white; border:none; padding:10px 20px; border-radius:10px; font-weight:700; display:inline-flex; align-items:center; gap:8px; box-shadow:0 4px 6px -1px rgba(217,119,6,0.2);">
                         ✏️ Edit & Resubmit Order
                     </a>
+                <?php endif; ?>
+
+                <?php if ($order['payment_status'] === 'Unpaid' && !in_array($order['status'], ['Downpayment Submitted', 'Cancelled'])): ?>
+                    <button type="button" onclick="openPaymentModal()" class="btn-primary" style="background:linear-gradient(135deg,#10b981,#059669); color:white; border:none; padding:10px 20px; border-radius:10px; font-weight:700; display:inline-flex; align-items:center; gap:8px; box-shadow:0 4px 6px -1px rgba(16,185,129,0.2);">
+                        💳 Pay via GCash
+                    </button>
                 <?php endif; ?>
 
                 <?php if (can_customer_cancel_order($order)): ?>
@@ -102,6 +114,89 @@ require_once __DIR__ . '/../includes/header.php';
                 </div>
             </div>
         <?php endif; ?>
+
+        <!-- Downpayment Required Alert (Only show if status is 'To Pay') -->
+        <?php if ($order['status'] === 'To Pay' && $order['payment_status'] === 'Unpaid'): ?>
+            <div style="background-color: #fff7ed; border: 1px solid #ffedd5; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; display: flex; gap: 1rem; align-items: center; border-left: 4px solid #f97316;">
+                <div style="background: #f97316; color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 1.25rem;">💳</div>
+                <div style="flex: 1;">
+                    <h3 style="color: #9a3412; font-weight: 700; font-size: 1rem; margin-bottom: 0.25rem;">Mandatory Downpayment Required</h3>
+                    <p style="color: #c2410c; font-size: 0.875rem; line-height: 1.5; margin-bottom: 0.75rem;">
+                        Your order will <strong>NOT</strong> be processed unless you pay at least 50% downpayment (<?php echo format_currency($order['total_amount'] * 0.5); ?>). 
+                        Please upload your proof of payment to begin production.
+                    </p>
+                    <button onclick="openPaymentModal()" style="background:#f97316; color:white; border:none; padding:8px 16px; border-radius:8px; font-size:0.875rem; font-weight:700; cursor:pointer; transition:background 0.2s;" onmouseover="this.style.background='#ea580c'" onmouseout="this.style.background='#f97316'">
+                        Submit Downpayment Proof
+                    </button>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <!-- Payment Submitted Status Alert -->
+        <?php if ($order['status'] === 'Downpayment Submitted'): ?>
+            <div style="background-color: #f0fdf4; border: 1px solid #dcfce7; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; display: flex; gap: 1rem; align-items: center; border-left: 4px solid #22c55e;">
+                <div style="background: #22c55e; color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 1.25rem;">⏳</div>
+                <div>
+                    <h3 style="color: #166534; font-weight: 700; font-size: 1rem; margin-bottom: 0.25rem;">Payment Submitted Successfully</h3>
+                    <p style="color: #15803d; font-size: 0.875rem; line-height: 1.5;">
+                        Waiting for staff verification. You will be notified once your downpayment has been approved.
+                    </p>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <!-- Payment Modal -->
+        <div id="paymentModal" class="modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:100; align-items:center; justify-content:center; padding:20px; backdrop-filter: blur(4px);">
+            <div class="card" style="max-width:500px; width:100%; position:relative; border-radius: 20px; padding: 2rem;">
+                <h2 style="font-size:1.5rem; font-weight:800; margin-bottom:0.5rem; color:#111827; display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.5rem;">💳</span> Pay via GCash
+                </h2>
+                <p style="color:#6b7280; font-size:0.9rem; margin-bottom:1.5rem;">Please pay at least 50% downpayment to start the process.</p>
+                
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; margin-bottom: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="color: #64748b; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">GCash Account</span>
+                        <span style="color: #0d9488; font-size: 0.8rem; font-weight: 700;">Verified</span>
+                    </div>
+                    <div style="font-size: 1.25rem; font-weight: 800; color: #1e293b; margin-bottom: 4px;">0912 345 6789</div>
+                    <div style="font-size: 0.85rem; color: #64748b;">Name: <strong>PRINTFLOW SHOP</strong></div>
+                </div>
+
+                <form id="paymentForm" enctype="multipart/form-data">
+                    <input type="hidden" name="order_id" value="<?php echo $order_id; ?>">
+                    <?php echo csrf_field(); ?>
+                    
+                    <div style="margin-bottom:1.25rem;">
+                        <label style="display:block; font-size:0.875rem; font-weight:700; color: #374151; margin-bottom:0.5rem;">Amount to Pay (PHP)</label>
+                        <input type="number" name="amount" step="0.01" class="input-field" 
+                               value="<?php echo number_format($order['total_amount'] * 0.5, 2, '.', ''); ?>" 
+                               min="<?php echo number_format($order['total_amount'] * 0.5, 2, '.', ''); ?>" 
+                               style="width:100%; font-size: 1.1rem; font-weight: 700; color: #4F46E5;" required>
+                        <p style="font-size: 0.75rem; color: #6b7280; margin-top: 8px;">Min. 50%: <?php echo format_currency($order['total_amount'] * 0.5); ?></p>
+                    </div>
+                    
+                    <div style="margin-bottom:1.5rem;">
+                        <label style="display:block; font-size:0.875rem; font-weight:700; color: #374151; margin-bottom:0.5rem;">Upload Proof of Payment</label>
+                        <div id="dropzone" style="border: 2px dashed #e2e8f0; border-radius: 12px; padding: 1.5rem; text-align: center; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#4F46E5'; this.style.background='#f5f3ff'" onmouseout="this.style.borderColor='#e2e8f0'; this.style.background='transparent'">
+                            <input type="file" name="payment_proof" id="proofInput" style="display: none;" accept="image/*" required>
+                            <div id="uploadPlaceholder">
+                                <span style="font-size: 2rem;">📸</span>
+                                <p style="font-size: 0.875rem; color: #64748b; margin-top: 8px;">Click to upload or drag image</p>
+                            </div>
+                            <div id="filePreview" style="display: none; align-items: center; justify-content: center; flex-direction: column;">
+                                <img id="previewImg" src="" style="max-height: 100px; border-radius: 8px; margin-bottom: 8px;">
+                                <p id="fileName" style="font-size: 0.8rem; color: #1e293b; font-weight: 600;"></p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="display:flex; justify-content:flex-end; gap:12px;">
+                        <button type="button" onclick="closePaymentModal()" class="btn-secondary" style="border-radius: 10px;">Cancel</button>
+                        <button type="submit" id="submitPaymentBtn" class="btn-primary" style="background:#4F46E5; color:white; border-radius: 10px; padding: 10px 24px;">Submit Payment</button>
+                    </div>
+                </form>
+            </div>
+        </div>
 
         <!-- Cancellation Modal -->
         <div id="cancelModal" class="modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:100; align-items:center; justify-content:center; padding:20px;">
@@ -150,6 +245,88 @@ require_once __DIR__ . '/../includes/header.php';
             }
             function closeCancelModal() {
                 document.getElementById('cancelModal').style.display = 'none';
+            }
+
+            function openPaymentModal() {
+                document.getElementById('paymentModal').style.display = 'flex';
+            }
+            function closePaymentModal() {
+                document.getElementById('paymentModal').style.display = 'none';
+            }
+
+            // File upload UI handling
+            const dropzone = document.getElementById('dropzone');
+            const proofInput = document.getElementById('proofInput');
+
+            // Auto-open payment modal if ?pay=1 is in URL
+            window.addEventListener('DOMContentLoaded', () => {
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.get('pay') === '1') {
+                    openPaymentModal();
+                }
+            });
+            const uploadPlaceholder = document.getElementById('uploadPlaceholder');
+            const filePreview = document.getElementById('filePreview');
+            const previewImg = document.getElementById('previewImg');
+            const fileName = document.getElementById('fileName');
+
+            if (dropzone) {
+                dropzone.addEventListener('click', () => proofInput.click());
+                proofInput.addEventListener('change', (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        fileName.textContent = file.name;
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            previewImg.src = e.target.result;
+                            uploadPlaceholder.style.display = 'none';
+                            filePreview.style.display = 'flex';
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                });
+            }
+
+            // AJAX Submission
+            const paymentForm = document.getElementById('paymentForm');
+            if (paymentForm) {
+                paymentForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    const btn = document.getElementById('submitPaymentBtn');
+                    btn.disabled = true;
+                    btn.textContent = 'Submitting...';
+
+                    const formData = new FormData(this);
+                    
+                    fetch('api_submit_payment.php', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showSuccessModal(
+                                '✅ Payment Submitted',
+                                data.message,
+                                'order_details.php?id=<?php echo $order_id; ?>',
+                                'orders.php',
+                                'View Order',
+                                'Back to Orders'
+                            );
+                            closePaymentModal();
+                        } else {
+                            alert('Error: ' + data.message);
+                            btn.disabled = false;
+                            btn.textContent = 'Submit Payment';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('An unexpected error occurred. Please try again.');
+                        btn.disabled = false;
+                        btn.textContent = 'Submit Payment';
+                    });
+                });
             }
 
             // Trigger success modal if success message exists
@@ -223,10 +400,11 @@ require_once __DIR__ . '/../includes/header.php';
                         <?php foreach ($items as $item): ?>
                             <tr style="border-bottom:1px solid #f3f4f6;">
                                 <td style="padding:1.5rem;">
-                                    <div style="display:flex; gap:1rem; align-items:flex-start;">
-                                        <?php if (!empty($item['design_image'])): ?>
-                                            <a href="/printflow/public/serve_design.php?type=order_item&id=<?php echo (int)$item['order_item_id']; ?>" target="_blank" style="display: block; width:60px; height:60px; border-radius: 8px; overflow: hidden; border: 2px solid white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); flex-shrink:0;">
-                                                <img src="/printflow/public/serve_design.php?type=order_item&id=<?php echo (int)$item['order_item_id']; ?>"
+                                    <div style="display:flex; gap:1rem; align-items:flex-start; justify-content:center;">
+                                        <?php if (!empty($item['design_image']) || !empty($item['design_file'])): ?>
+                                            <?php $design_url = "/printflow/public/serve_design.php?type=order_item&id=" . (int)$item['order_item_id']; ?>
+                                            <a href="<?php echo $design_url; ?>" target="_blank" style="display: block; width:60px; height:60px; border-radius: 8px; overflow: hidden; border: 2px solid white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); flex-shrink:0;">
+                                                <img src="<?php echo $design_url; ?>"
                                                      style="width:100%; height:100%; object-fit:cover;" 
                                                      alt="Design">
                                             </a>
@@ -235,33 +413,111 @@ require_once __DIR__ . '/../includes/header.php';
                                                 <span style="font-size:1.5rem;">📦</span>
                                             </div>
                                         <?php endif; ?>
-                                        <div style="min-width:0;">
-                                            <div style="font-weight:700; color:#111827; margin-bottom:2px;"><?php echo htmlspecialchars($item['product_name']); ?></div>
-                                            <div style="font-size:0.75rem; color:#6b7280; margin-bottom:8px;"><?php echo htmlspecialchars($item['category']); ?></div>
+                                         <div style="min-width:0;">
+                                             <?php 
+                                                $p_name = $item['product_name'];
+                                                $c_data = json_decode($item['customization_data'] ?? '{}', true);
+                                                if (empty($p_name) || $p_name === 'Custom Order' || $p_name === 'Custom Product') {
+                                                    if (!empty($c_data['service_type'])) {
+                                                        $p_name = $c_data['service_type'];
+                                                        if (!empty($c_data['product_type'])) {
+                                                            $p_name .= " (" . $c_data['product_type'] . ")";
+                                                        }
+                                                    } else {
+                                                        $p_name = "Custom Order";
+                                                    }
+                                                }
+                                             ?>
+                                             <div style="font-weight:700; color:#111827; margin-bottom:2px;"><?php echo htmlspecialchars($p_name); ?></div>
+                                             <div style="font-size:0.75rem; color:#6b7280; margin-bottom:8px;"><?php echo htmlspecialchars($item['category'] ?: 'Signage'); ?></div>
                                             
-                                            <?php if (!empty($item['customization_data'])): ?>
-                                                <div style="display:flex; flex-wrap:wrap; gap:4px;">
-                                                    <?php 
-                                                        $c_data = json_decode($item['customization_data'], true);
-                                                        if ($c_data):
-                                                            foreach ($c_data as $ck => $cv):
-                                                                if (empty($cv) || $ck === 'notes' || $ck === 'design_upload') continue;
-                                                    ?>
-                                                        <span style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:6px; font-size:0.75rem; font-weight:500;">
-                                                            <?php echo ucwords(str_replace('_', ' ', $ck)); ?>: <strong><?php echo htmlspecialchars($cv); ?></strong>
-                                                        </span>
-                                                    <?php 
-                                                            endforeach;
-                                                        endif;
-                                                    ?>
+                                            <div style="display: flex; gap: 2rem; margin-top: 12px; align-items: flex-start; justify-content:center;">
+                                                <!-- Left: Customization Details Grid -->
+                                                <div style="flex: 1.8; min-width: 0;">
+                                                     <?php 
+                                                        if (!empty($item['customization_data'])): 
+                                                            $c_desc = '';
+                                                            if ($c_data):
+                                                        ?>
+                                                                <div style="font-weight: 800; color: #0f172a; font-size: 1.25rem; margin-bottom: 0.5rem; text-align: left;"><?php echo htmlspecialchars($p_name); ?></div>
+                                                                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px;">
+                                                                    <div style="font-size: 0.75rem; font-weight: 800; color: #475569; text-transform: uppercase; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 12px; letter-spacing: 0.05em;">Product Specifications</div>
+                                                                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px;">
+                                                                        <?php 
+                                                                            foreach ($c_data as $ck => $cv):
+                                                                                if (empty($cv) || $cv === 'No' || $cv === 'None' || $cv === 'none' || $ck === 'design_upload' || $ck === 'reference_upload') continue;
+                                                                                
+                                                                                // Specific exclusions for Reflectorized Temporary Plates
+                                                                                $is_reflectorized = (strpos(strtolower($item['category'] ?? ''), 'reflectorized') !== false) || 
+                                                                                                   (strpos(strtolower($c_data['service_type'] ?? ''), 'reflectorized') !== false);
+                                                                                $is_temp_plate = strpos($c_data['product_type'] ?? '', 'Temporary Plate') !== false; $is_gate_pass = strpos($c_data['product_type'] ?? '', 'Gate Pass') !== false;
+                                                                                $is_street_signage = strpos($c_data['product_type'] ?? '', 'Street') !== false;
+                                                                                 $exclusions = ['unit', 'bg_color', 'text_color', 'arrow_direction', 'quantity', 'material_type', 'shape', 'with_border', 'rounded_corners', 'with_numbering', 'install_service', 'need_proof', 'reflective_color', 'inches', 'service_type', 'product_type', 'dimensions']; $gate_pass_only_exclusions = ['bg_color', 'text_color', 'reflective_color', 'text_content', 'arrow_direction', 'with_numbering', 'install_service', 'need_proof', 'temp_plate_text', 'product_type', 'dimensions', 'unit', 'shape', 'material_type', 'service_type'];
+                                                                                 $street_signage_only_exclusions = ['bg_color', 'text_color', 'reflective_color', 'with_numbering', 'starting_number', 'mounting_option', 'temp_plate_text', 'product_type', 'dimensions', 'unit', 'shape', 'material_type', 'service_type'];
+                                                                                
+                                                                                if ($is_reflectorized && $is_temp_plate && (in_array($ck, $exclusions) || strtolower($cv) === 'inches')) continue;
+                                                                                if ($is_reflectorized && $is_gate_pass && (in_array($ck, $gate_pass_only_exclusions) || $ck === 'quantity_gatepass')) continue;
+                                                                                if ($is_reflectorized && $is_street_signage && in_array($ck, $street_signage_only_exclusions)) continue;
+                                                                                
+                                                                                if (strpos(strtolower($ck), 'description') !== false || $ck === 'notes'):
+                                                                                    $c_desc = $cv;
+                                                                                    continue;
+                                                                                endif;
+                                                                        ?>
+                                                                        <div>
+                                                                        <div style="font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.025em;"><?php echo ucwords(str_replace('_', ' ', $ck)); ?></div>
+                                                                        <div style="font-size: 1rem; font-weight: 700; color: #1e293b; word-break: break-word; overflow-wrap: anywhere;"><?php echo htmlspecialchars($cv); ?></div>
+                                                                    </div>
+                                                                <?php 
+                                                                        endforeach;
+                                                                    endif;
+                                                                ?>
+                                                            </div>
+                                                            
+                                                            <?php if ($c_desc): ?>
+                                                                <div style="margin-top: 12px; padding: 12px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px;">
+                                                                    <div style="font-size: 0.75rem; font-weight: 800; color: #92400e; text-transform: uppercase; margin-bottom: 4px;">📝 Your Notes</div>
+                                                                    <div style="font-size: 0.95rem; color: #b45309; line-height: 1.5; font-weight: 600; word-break: break-word; overflow-wrap: anywhere;"><?php echo nl2br(htmlspecialchars($c_desc)); ?></div>
+                                                                </div>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                    <?php endif; ?>
                                                 </div>
-                                            <?php endif; ?>
 
-                                            <?php if (!empty($item['design_image'])): ?>
-                                                <div style="margin-top:8px; font-size:0.75rem; color:#059669; font-weight:600; display:flex; align-items:center; gap:4px;">
-                                                    <span style="background:#ecfdf5; padding:2px 6px; border-radius:4px;">✅ Design Provided</span>
+                                                <!-- Right: Design Indicators & Previews -->
+                                                <div style="flex: 1.2; min-width: 0; display: flex; flex-direction: column; gap: 12px;">
+                                                    <?php if (!empty($item['design_image']) || !empty($item['design_file'])): ?>
+                                                        <div style="background: #f0fdf4; border: 1px solid #dcfce7; border-radius: 12px; padding: 12px;">
+                                                            <div style="font-size: 0.75rem; font-weight: 800; color: #166534; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.025em;">Final Design</div>
+                                                            <div style="display: flex; align-items: center; gap: 12px;">
+                                                                <div style="width: 50px; height: 50px; border-radius: 8px; overflow: hidden; border: 2px solid #bbf7d0; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                                                    <img src="<?php echo $design_url; ?>" style="width: 100%; height: 100%; object-fit: cover;">
+                                                                </div>
+                                                                <div>
+                                                                    <div style="font-size: 0.85rem; color: #15803d; font-weight: 800;">✅ Uploaded</div>
+                                                                    <a href="<?php echo $design_url; ?>" target="_blank" style="font-size: 0.75rem; color: #166534; font-weight: 700; text-decoration: underline;">View Full Size</a>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    <?php endif; ?>
+
+                                                    <?php if (!empty($item['reference_image_file'])): ?>
+                                                        <div style="background: #eff6ff; border: 1px solid #dbeafe; border-radius: 12px; padding: 12px;">
+                                                            <div style="font-size: 0.75rem; font-weight: 800; color: #1e40af; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.025em;">Reference</div>
+                                                            <div style="display: flex; align-items: center; gap: 12px;">
+                                                                <?php $ref_url = "/printflow/public/serve_design.php?type=order_item&id=" . (int)$item['order_item_id'] . "&field=reference"; ?>
+                                                                <div style="width: 50px; height: 50px; border-radius: 8px; overflow: hidden; border: 2px solid #bfdbfe; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                                                    <img src="<?php echo $ref_url; ?>" style="width: 100%; height: 100%; object-fit: cover;">
+                                                                </div>
+                                                                <div>
+                                                                    <div style="font-size: 0.85rem; color: #1e40af; font-weight: 800;">ℹ️ Reference</div>
+                                                                    <a href="<?php echo $ref_url; ?>" target="_blank" style="font-size: 0.75rem; color: #2563eb; font-weight: 700; text-decoration: underline;">View Full Size</a>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    <?php endif; ?>
                                                 </div>
-                                            <?php endif; ?>
+                                            </div>
                                         </div>
                                     </div>
                                 </td>

@@ -18,9 +18,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect($_SERVER['HTTP_REFERER'] ?? 'orders.php');
     }
 
-    // Update order status to 'For Revision'
-    $sql = "UPDATE orders SET status = 'For Revision', revision_reason = ? WHERE order_id = ?";
-    $success = db_execute($sql, 'si', [$revision_reason, $order_id]);
+    // Snapshot current designs into revision history
+    $insert_sql = "INSERT INTO order_item_revisions (order_id, order_item_id, staff_id, revision_reason, design_image, design_image_name, design_image_mime)
+                   SELECT order_id, order_item_id, ?, ?, design_image, design_image_name, design_image_mime
+                   FROM order_items WHERE order_id = ? AND design_image IS NOT NULL";
+    db_execute($insert_sql, 'isi', [get_user_id(), $revision_reason, $order_id]);
+
+    // Update order status to 'Revision Requested' and 'For Revision'
+
+
+    $sql = "UPDATE orders SET 
+            status = 'For Revision', 
+            design_status = 'Revision Requested', 
+            revision_reason = ?, 
+            reviewed_by = ?, 
+            reviewed_at = NOW() 
+            WHERE order_id = ?";
+    $success = db_execute($sql, 'sii', [$revision_reason, get_user_id(), $order_id]);
 
     if ($success) {
         // Log Activity
@@ -35,7 +49,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'Customer', 
                 "Revision requested for Order #$order_id: $revision_reason", 
                 'Order', 
-                true // Send email
+                true, // Send email
+                false, // Send SMS
+                $order_id
             );
         }
 

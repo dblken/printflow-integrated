@@ -35,7 +35,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['staff_cancel'])) {
                 "Your order #{$order_id} has been cancelled by staff. Reason: $full_reason", 
                 'Order', 
                 true, 
-                false
+                false,
+                $order_id
             );
         }
 

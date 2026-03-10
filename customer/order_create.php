@@ -16,6 +16,18 @@ if ($product_id) {
     $result = db_query("SELECT * FROM products WHERE product_id = ? AND status = 'Activated'", 'i', [$product_id]);
     if (!empty($result)) {
         $product = $result[0];
+        if (isset($product['category'])) {
+            $cat_lower = strtolower($product['category']);
+            if (strpos($cat_lower, 'shirt') !== false) {
+                $product['category'] = 'T-Shirts';
+            } elseif (strpos($cat_lower, 'tarpaulin') !== false) {
+                $product['category'] = 'Tarpaulin';
+            } elseif (strpos($cat_lower, 'decal') !== false || strpos($cat_lower, 'sticker') !== false) {
+                $product['category'] = 'Decals & Stickers';
+            } elseif (strpos($cat_lower, 'sintra') !== false) {
+                $product['category'] = 'Sintraboard & Standees';
+            }
+        }
     }
 }
 
@@ -38,105 +50,214 @@ if ($is_restricted) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['add_to_cart']) || isset($_POST['buy_now']))) {
-    if ($is_restricted) {
+    // CSRF Check
+    if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
+        $error_msg = "Invalid session. Please refresh the page and try again.";
+    } elseif ($is_restricted) {
         $error_msg = "Account restricted. Cannot place order.";
     } else {
         $quantity = (int)$_POST['quantity'];
         
         // ----------------------------------------------------------------
-        // File Upload handling — image stored in session as binary (BLOB)
-    // NO file is ever saved to the local filesystem.
-    // Allowed: JPG / PNG only. Max: 5MB.
-    // ----------------------------------------------------------------
-    $design_binary = null;  // raw image bytes
-    $design_mime   = null;  // e.g. 'image/jpeg'
-    $design_name   = null;  // original filename for display
-
-    if (isset($_FILES['design_upload']) && $_FILES['design_upload']['error'] === UPLOAD_ERR_OK) {
-        $file_tmp  = $_FILES['design_upload']['tmp_name'];
-        $file_name = $_FILES['design_upload']['name'];
-        $file_size = $_FILES['design_upload']['size'];
-        $file_ext  = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
-
-        // 1. Extension whitelist
-        $allowed_ext = ['jpg', 'jpeg', 'png'];
-        if (!in_array($file_ext, $allowed_ext)) {
-            $error_msg = "Invalid file type. Only JPG and PNG images are allowed.";
+        // File Upload handling — images stored in session as temp paths
+        // ----------------------------------------------------------------
+        
+        $active_design_field = 'design_upload';
+        if (isset($product['category'])) {
+            if ($product['category'] === 'T-Shirts') $active_design_field = 'tshirt_design_upload';
+            elseif ($product['category'] === 'Tarpaulin') $active_design_field = 'tarp_design_upload';
         }
-        // 2. File size limit (5 MB)
-        elseif ($file_size > 5 * 1024 * 1024) {
-            $error_msg = "File too large. Maximum size is 5MB.";
-        }
-        else {
-            // 3. MIME validation using finfo (reads actual file bytes, not the extension)
-            $finfo = finfo_open(FILEINFO_MIME_TYPE);
-            $mime  = finfo_file($finfo, $file_tmp);
-            finfo_close($finfo);
+        
+        $files_to_handle = [
+            $active_design_field => ['required' => true, 'allowed_ext' => ['jpg', 'jpeg', 'png', 'ai', 'pdf', 'psd']],
+            'reference_upload' => ['required' => false, 'allowed_ext' => ['jpg', 'jpeg', 'png']]
+        ];
 
-            $allowed_mime = ['image/jpeg', 'image/jpg', 'image/png'];
-            if (!in_array($mime, $allowed_mime)) {
-                $error_msg = "Invalid file content. Only JPG and PNG images are accepted.";
-            } else {
-                // 4. Read binary data — never move_uploaded_file()
-                $data = file_get_contents($file_tmp);
-                if ($data === false || $data === '') {
-                    $error_msg = "Failed to read uploaded file. Please try again.";
-                } else {
-                    $design_binary = $data;
-                    $design_mime   = $mime;
-                    $design_name   = $file_name;
+        $uploaded_files = [];
+
+        foreach ($files_to_handle as $field_name => $config) {
+            if (isset($_FILES[$field_name]) && $_FILES[$field_name]['error'] === UPLOAD_ERR_OK) {
+                $file_tmp  = $_FILES[$field_name]['tmp_name'];
+                $file_name = $_FILES[$field_name]['name'];
+                $file_size = $_FILES[$field_name]['size'];
+                $file_ext  = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
+
+                // 1. Extension whitelist
+                if (!in_array($file_ext, $config['allowed_ext'])) {
+                    $error_msg = "Invalid file type for " . ucwords(str_replace('_', ' ', $field_name)) . ". Allowed: " . implode(', ', $config['allowed_ext']);
+                    break;
                 }
+                // 2. File size limit (10MB for design, 5MB for reference)
+                $max_size = (strpos($field_name, 'design_upload') !== false) ? 10 * 1024 * 1024 : 5 * 1024 * 1024;
+                if ($file_size > $max_size) {
+                    $max_mb = $max_size / (1024 * 1024);
+                    $error_msg = "File too large (" . ucwords(str_replace('_', ' ', $field_name)) . "). Maximum size is {$max_mb}MB.";
+                    break;
+                }
+                else {
+                    // Read binary data
+                    $data = file_get_contents($file_tmp);
+                    if ($data === false || $data === '') {
+                        $error_msg = "Failed to read uploaded file. Please try again.";
+                        break;
+                    } else {
+                        // Store temp file path
+                        $tmp_path = tempnam(sys_get_temp_dir(), 'pf_design_');
+                        file_put_contents($tmp_path, $data);
+                        
+                        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+                        $mime  = finfo_file($finfo, $file_tmp);
+                        finfo_close($finfo);
+
+                        $uploaded_files[$field_name] = [
+                            'tmp_path' => $tmp_path,
+                            'mime'     => $mime,
+                            'name'     => $file_name
+                        ];
+                    }
+                }
+            } elseif ($config['required'] && (!isset($_FILES[$field_name]) || $_FILES[$field_name]['error'] === UPLOAD_ERR_NO_FILE)) {
+                $error_msg = "Please upload the required " . ucwords(str_replace('_', ' ', $field_name)) . ".";
+                break;
+            } elseif (isset($_FILES[$field_name]) && $_FILES[$field_name]['error'] !== UPLOAD_ERR_NO_FILE && $_FILES[$field_name]['error'] !== UPLOAD_ERR_OK) {
+                $error_msg = "File upload error for " . ucwords(str_replace('_', ' ', $field_name)) . ".";
+                break;
             }
         }
-    } elseif (isset($_FILES['design_upload']) && $_FILES['design_upload']['error'] !== UPLOAD_ERR_NO_FILE) {
-        // A file was attempted but had an upload error
-        $error_msg = "File upload error. Please try again.";
-    }
 
-    // Collect customization data (everything except system fields)
-    $customization = [];
-    $system_fields = ['add_to_cart', 'buy_now', 'quantity', 'product_id', 'csrf_token'];
-    foreach ($_POST as $key => $value) {
-        if (!in_array($key, $system_fields)) {
-            $customization[$key] = sanitize($value);
-        }
-    }
-
-    if (empty($error_msg) && $quantity > 0) {
-        if (!isset($_SESSION['cart'])) {
-            $_SESSION['cart'] = [];
-        }
-
-        // Unique key per line item to support multiple customizations of the same product
-        $item_key = $product_id . '_' . time();
-
-        // Save binary image to a temp file (NOT in session — large data breaks session save)
-        $design_tmp_path = null;
-        if ($design_binary) {
-            $design_tmp_path = tempnam(sys_get_temp_dir(), 'pf_design_');
-            file_put_contents($design_tmp_path, $design_binary);
-        }
-
-        $_SESSION['cart'][$item_key] = [
-            'product_id'     => $product_id,
-            'name'           => $product['name'],
-            'price'          => $product['price'],
-            'quantity'       => $quantity,
-            'image'          => '📦',
-            'customization'  => $customization,
-            // Store temp file path (not binary data — session can't handle large blobs)
-            'design_tmp_path' => $design_tmp_path,
-            'design_mime'     => $design_mime,
-            'design_name'     => $design_name,
-        ];
+        // Collect customization data
+        $customization = [];
+        $category = $product['category'] ?? '';
         
-        // Redirect to review page (Buy Now) or cart (Add to Cart)
-        if (isset($_POST['buy_now'])) {
-            header("Location: order_review.php?item=" . urlencode($item_key));
-        } else {
-            header("Location: cart.php");
+        $allowed_fields = [
+            'T-Shirts' => [
+                'shirt_source', 'shirt_type', 'shop_shirt_color', 'shop_shirt_size', 
+                'client_shirt_color', 'client_shirt_material', 'material_disclaimer',
+                'printing_method', 'shirt_placement', 'print_size', 
+                'tshirt_custom_width', 'tshirt_custom_height', 'tshirt_design_description'
+            ],
+            'Tarpaulin' => [
+                'tarp_size_option', 'tarp_preset_size', 'tarp_width', 'tarp_height', 'tarp_unit',
+                'tarp_material', 'tarp_finish', 'tarp_edges', 'tarp_grommet_option', 
+                'tarp_grommet_instructions', 'tarp_design_service', 'tarp_design_description'
+            ],
+            'Decals & Stickers' => [
+                'vehicle_brand', 'vehicle_model', 'vehicle_year', 'placement', 
+                'size_option', 'custom_width', 'custom_height', 'material_type', 'design_description'
+            ],
+            'Sintraboard & Standees' => [
+                'width', 'height', 'thickness', 'stand_type', 'lamination', 'cut_type', 'design_description', 'flat_type'
+            ],
+            'Merchandise' => [
+                'design_description'
+            ]
+        ];
+
+        $current_allowed = $allowed_fields[$category] ?? [];
+
+        foreach ($_POST as $key => $value) {
+            if (in_array($key, $current_allowed) && $value !== '') {
+                $customization[$key] = sanitize($value);
+            }
         }
-        exit;
+
+        if (empty($error_msg) && $quantity > 0) {
+            if (!isset($_SESSION['cart'])) {
+                $_SESSION['cart'] = [];
+            }
+
+            // Adjust price for specialized products
+            $item_price = $product['price'];
+            if ($product['category'] === 'T-Shirts') {
+                if (isset($_POST['shirt_source']) && $_POST['shirt_source'] === 'Client') {
+                    $item_price = 150.00;
+                }
+            } elseif ($product['category'] === 'Tarpaulin') {
+                // Tarpaulin Pricing Logic
+                $width = (float)($_POST['tarp_width'] ?? 2);
+                $height = (float)($_POST['tarp_height'] ?? 3);
+                $unit = $_POST['tarp_unit'] ?? 'ft';
+                
+                if (isset($_POST['tarp_size_option']) && $_POST['tarp_size_option'] === 'Preset') {
+                    $preset = $_POST['tarp_preset_size'] ?? '2x3';
+                    $parts = explode('x', $preset);
+                    if (count($parts) === 2) {
+                        $width = (float)$parts[0];
+                        $height = (float)$parts[1];
+                        $unit = 'ft';
+                    }
+                }
+                
+                // Convert to SqFt if in inches
+                $sqft = ($unit === 'in') ? ($width * $height) / 144 : ($width * $height);
+                
+                $base_rate = (float)$product['price']; // Base rate per sqft
+                if ($base_rate <= 0) $base_rate = 25.00; // Default fallback rate
+                
+                $total_price = $sqft * $base_rate;
+                
+                // Material Multipliers
+                $material = $_POST['tarp_material'] ?? '10oz';
+                if ($material === '13oz') $total_price *= 1.25;
+                if ($material === '15oz') $total_price *= 1.5;
+                
+                // Finishing Add-ons
+                $edges = $_POST['tarp_edges'] ?? 'Heat Cut Only';
+                if ($edges === 'Folded & Sewn Edges') $total_price += ($sqft * 2);
+                
+                $grommets = $_POST['tarp_grommet_option'] ?? 'No Grommets';
+                if ($grommets !== 'No Grommets') $total_price += 10.00; // Small flat fee for grommets
+                
+                // Design Service
+                $design_service = $_POST['tarp_design_service'] ?? 'Ready';
+                if ($design_service === 'Requested') $total_price += 50.00; // Fixed layout fee
+                
+                $item_price = round($total_price, 2);
+            } elseif ($product['category'] === 'Decals & Stickers' || $product['category'] === 'Stickers') {
+                if (isset($_POST['size_option']) && $_POST['size_option'] === 'Custom Size') {
+                    $item_price += 15.00;
+                }
+            }
+
+            // Unique key per line item
+            $item_key = $product_id . '_' . time();
+
+            $_SESSION['cart'][$item_key] = [
+                'product_id'     => $product_id,
+                'name'           => $product['name'],
+                'category'       => $product['category'] ?? '',
+                'price'          => $item_price,
+                'quantity'       => $quantity,
+                'image'          => '📦',
+                'customization'  => $customization,
+                
+                // Spec capture (general & specialized)
+                'width'          => $_POST['width'] ?? ($_POST['custom_width'] ?? ($_POST['tarp_width'] ?? null)),
+                'height'         => $_POST['height'] ?? ($_POST['custom_height'] ?? ($_POST['tarp_height'] ?? null)),
+                'thickness'      => $_POST['thickness'] ?? null,
+                'stand_type'     => $_POST['stand_type'] ?? ($_POST['flat_type'] ?? null),
+                'lamination'     => $_POST['lamination'] ?? null,
+                'cut_type'       => $_POST['cut_type'] ?? null,
+                'design_notes'   => $_POST['design_description'] ?? ($_POST['tshirt_design_description'] ?? ($_POST['tarp_design_description'] ?? null)),
+
+                // Primary design
+                'design_tmp_path' => $uploaded_files[$active_design_field]['tmp_path'] ?? null,
+                'design_mime'     => $uploaded_files[$active_design_field]['mime'] ?? null,
+                'design_name'     => $uploaded_files[$active_design_field]['name'] ?? null,
+                
+                // Reference image
+                'reference_tmp_path' => $uploaded_files['reference_upload']['tmp_path'] ?? null,
+                'reference_mime'     => $uploaded_files['reference_upload']['mime'] ?? null,
+                'reference_name'     => $uploaded_files['reference_upload']['name'] ?? null,
+            ];
+            
+            // Redirect
+            if (isset($_POST['buy_now'])) {
+                header("Location: order_review.php?item=" . urlencode($item_key));
+            } else {
+                header("Location: cart.php");
+            }
+            exit;
         }
     }
 }
@@ -146,7 +267,7 @@ $use_customer_css = true;
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
-<div class="min-h-screen py-8">
+<div class="min-h-screen py-8" x-data="orderModal">
     <div class="container mx-auto px-4" style="max-width:1100px;">
         <a href="products.php" class="back-link" style="display:inline-flex; align-items:center; gap:6px; color:#6b7280; margin-bottom:1rem; text-decoration:none;">← Back to Products</a>
 
@@ -168,17 +289,28 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
         <?php endif; ?>
 
-        <?php if ($error_msg): ?>
-            <div style="background-color: #fef2f2; border: 1px solid #fee2e2; border-radius: 12px; padding: 1.25rem; margin-bottom: 2rem; color: #b91c1c; font-size: 0.95rem; display: flex; align-items: center; gap: 0.75rem;">
-                <span style="font-size: 1.5rem;">🚫</span>
-                <div><?php echo $error_msg; ?></div>
-            </div>
-        <?php endif; ?>
+
 
         <div class="card" style="display:grid; grid-template-columns: 1fr 1fr; gap:2rem; padding:2rem;">
             <!-- Product Image Area -->
-            <div style="background:#f3f4f6; border-radius:12px; display:flex; align-items:center; justify-content:center; min-height:400px; font-size:5rem;">
-                📦
+            <div style="background:#f3f4f6; border-radius:12px; display:flex; align-items:center; justify-content:center; min-height:400px; overflow:hidden;">
+                <?php 
+                $img_link = "/printflow/public/images/products/product_" . $product['product_id'];
+                $img_path = __DIR__ . "/../public/images/products/product_" . $product['product_id'];
+                $display_img = "";
+                if (!empty($product['product_image']) && file_exists(__DIR__ . "/../" . $product['product_image'])) {
+                     $display_img = "/printflow/" . ltrim($product['product_image'], '/');
+                } elseif (file_exists($img_path . ".jpg")) {
+                    $display_img = $img_link . ".jpg";
+                } elseif (file_exists($img_path . ".png")) {
+                    $display_img = $img_link . ".png";
+                }
+                
+                if ($display_img): ?>
+                    <img src="<?php echo htmlspecialchars($display_img); ?>" alt="<?php echo htmlspecialchars($product['name']); ?>" style="width:100%; height:100%; object-fit:cover;">
+                <?php else: ?>
+                    <span style="font-size:5rem;">📦</span>
+                <?php endif; ?>
             </div>
 
             <!-- Product Details -->
@@ -194,301 +326,824 @@ require_once __DIR__ . '/../includes/header.php';
                 </div>
                 
                 <?php if ($product['stock_quantity'] > 0): ?>
-                    <?php if ($error_msg): ?>
-                        <div style="background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; padding:12px; border-radius:8px; margin-bottom:1.5rem; font-size:0.9rem;">
-                            ⚠️ <?php echo htmlspecialchars($error_msg); ?>
+                    <div>
+                        <!-- Action Button -->
+                        <div style="margin-top:2rem;">
+                            <button type="button" @click="isOpen = true; step = 1" class="btn-primary" style="width:100%; padding:1.25rem; font-weight:800; border-radius:0; font-size:1.1rem; letter-spacing:0.05em; background:black; border:2px solid black; color:white; display:flex; align-items:center; justify-content:center; gap:12px; transition: all 0.2s; text-transform: uppercase;" onmouseover="this.style.background='white'; this.style.color='black';" onmouseout="this.style.background='black'; this.style.color='white';">
+                                START CUSTOMIZING
+                            </button>
+                            <p style="text-align:center; color:#64748b; font-size:0.85rem; margin-top:10px;">Personalize your order in simple steps</p>
+                        </div>
+
+                        </div>
+                    <?php else: ?>
+                        <div style="padding:1rem; background:#fee2e2; color:#991b1b; border-radius:8px; text-align:center; font-weight:600; margin-top:2rem;">
+                            Out of Stock
                         </div>
                     <?php endif; ?>
-
-                    <form method="POST" enctype="multipart/form-data" id="customization-form" style="margin-top:2rem;" x-data="{ 
-                        category: '<?php echo $product['category']; ?>',
-                        isValid: false,
-                        validate() {
-                            const form = document.getElementById('customization-form');
-                            this.isValid = form.checkValidity();
-                        }
-                    }" @change="validate()" @input="validate()" x-init="validate()">
-                        <?php echo csrf_field(); ?>
-                        <input type="hidden" name="product_id" value="<?php echo $product_id; ?>">
-                        
-                        <!-- Customization Fields Section -->
-                        <div style="background:#f9fafb; border:1px solid #f3f4f6; border-radius:12px; padding:1.5rem; margin-bottom:2rem;">
-                            <h3 style="font-size:1rem; font-weight:700; color:#374151; margin-bottom:1.5rem; display:flex; align-items:center; gap:8px;">
-                                🛠️ Customization Details
-                            </h3>
-
-                            <div class="service-fields">
-                                <?php 
-                                $cat = $product['category'];
-                                ?>
-
-                                <?php if ($cat === 'Tarpaulin Printing'): ?>
-                                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
-                                        <div>
-                                            <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Width (ft) *</label>
-                                            <input type="number" name="width" required class="input-field" placeholder="e.g. 2">
-                                        </div>
-                                        <div>
-                                            <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Height (ft) *</label>
-                                            <input type="number" name="height" required class="input-field" placeholder="e.g. 3">
-                                        </div>
-                                    </div>
-                                    <div style="margin-bottom:1rem;">
-                                        <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Finish Type *</label>
-                                        <select name="finish_type" required class="input-field">
-                                            <option value="Matte">Matte</option>
-                                            <option value="Glossy" selected>Glossy</option>
-                                        </select>
-                                    </div>
-                                    <div style="margin-bottom:1rem;">
-                                        <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">With Eyelets? *</label>
-                                        <select name="with_eyelets" required class="input-field">
-                                            <option value="Yes">Yes</option>
-                                            <option value="No">No</option>
-                                        </select>
-                                    </div>
-
-                                <?php elseif ($cat === 'T-Shirt Printing'): ?>
-                                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
-                                        <div>
-                                            <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Size *</label>
-                                            <select name="size" required class="input-field">
-                                                <option value="S">S</option>
-                                                <option value="M" selected>M</option>
-                                                <option value="L">L</option>
-                                                <option value="XL">XL</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Color *</label>
-                                            <select name="color" required class="input-field">
-                                                <option value="Black">Black</option>
-                                                <option value="White" selected>White</option>
-                                                <option value="Red">Red</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div style="margin-bottom:1rem;">
-                                        <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Print Placement *</label>
-                                        <select name="placement" required class="input-field">
-                                            <option value="Front">Front</option>
-                                            <option value="Back">Back</option>
-                                            <option value="Both">Both</option>
-                                        </select>
-                                    </div>
-
-                                <?php elseif ($cat === 'Stickers'): ?>
-                                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
-                                        <div>
-                                            <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Shape *</label>
-                                            <select name="shape" required class="input-field">
-                                                <option value="Circle">Circle</option>
-                                                <option value="Rectangle">Rectangle</option>
-                                                <option value="Custom">Custom</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Size (inches) *</label>
-                                            <input type="text" name="size" required class="input-field" placeholder="e.g. 2x2">
-                                        </div>
-                                    </div>
-                                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
-                                        <div>
-                                            <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Finish *</label>
-                                            <select name="finish" required class="input-field">
-                                                <option value="Glossy">Glossy</option>
-                                                <option value="Matte">Matte</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Waterproof? *</label>
-                                            <select name="waterproof" required class="input-field">
-                                                <option value="Yes">Yes</option>
-                                                <option value="No">No</option>
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                <?php elseif ($cat === 'Glass/Wall/Frosted'): ?>
-                                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
-                                        <div>
-                                            <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Width *</label>
-                                            <input type="text" name="width" required class="input-field">
-                                        </div>
-                                        <div>
-                                            <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Height *</label>
-                                            <input type="text" name="height" required class="input-field">
-                                        </div>
-                                    </div>
-                                    <div style="margin-bottom:1rem;">
-                                        <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Installation Needed? *</label>
-                                        <select name="installation" required class="input-field">
-                                            <option value="Yes">Yes</option>
-                                            <option value="No">No</option>
-                                        </select>
-                                    </div>
-
-                                <?php elseif ($cat === 'Transparent Stickers'): ?>
-                                    <div style="margin-bottom:1rem;">
-                                        <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Size *</label>
-                                        <input type="text" name="size" required class="input-field" placeholder="e.g. 2x2">
-                                    </div>
-                                    <div style="margin-bottom:1rem;">
-                                        <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">With White Ink? *</label>
-                                        <select name="white_ink" required class="input-field">
-                                            <option value="Yes">Yes</option>
-                                            <option value="No">No</option>
-                                        </select>
-                                    </div>
-
-                                <?php elseif ($cat === 'Layout Service'): ?>
-                                    <div style="margin-bottom:1rem;">
-                                        <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Type of Layout *</label>
-                                        <select name="layout_type" required class="input-field">
-                                            <option value="Logo">Logo</option>
-                                            <option value="Banner">Banner</option>
-                                            <option value="Invitation">Invitation</option>
-                                            <option value="Others">Others</option>
-                                        </select>
-                                    </div>
-                                    <div style="margin-bottom:1rem;">
-                                        <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Rush? *</label>
-                                        <select name="rush" required class="input-field">
-                                            <option value="No">No</option>
-                                            <option value="Yes">Yes</option>
-                                        </select>
-                                    </div>
-
-                                <?php elseif ($cat === 'Reflectorized'): ?>
-                                    <div style="margin-bottom:1rem;">
-                                        <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Size *</label>
-                                        <input type="text" name="size" required class="input-field">
-                                    </div>
-                                    <div style="margin-bottom:1rem;">
-                                        <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Material Type *</label>
-                                        <input type="text" name="material" required class="input-field">
-                                    </div>
-                                    <div style="margin-bottom:1rem;">
-                                        <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Installation? *</label>
-                                        <select name="installation" required class="input-field">
-                                            <option value="No">No</option>
-                                            <option value="Yes">Yes</option>
-                                        </select>
-                                    </div>
-
-                                <?php elseif ($cat === 'Stickers on Sintraboard'): ?>
-                                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
-                                        <div>
-                                            <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Thickness *</label>
-                                            <select name="thickness" required class="input-field">
-                                                <option value="3mm">3mm</option>
-                                                <option value="5mm">5mm</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Size *</label>
-                                            <input type="text" name="size" required class="input-field">
-                                        </div>
-                                    </div>
-                                    <div style="margin-bottom:1rem;">
-                                        <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">With Stand? *</label>
-                                        <select name="with_stand" required class="input-field">
-                                            <option value="No">No</option>
-                                            <option value="Yes">Yes</option>
-                                        </select>
-                                    </div>
-
-                                <?php elseif ($cat === 'Sintraboard Standees'): ?>
-                                    <div style="margin-bottom:1rem;">
-                                        <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Size *</label>
-                                        <input type="text" name="size" required class="input-field">
-                                    </div>
-                                    <div style="margin-bottom:1rem;">
-                                        <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">With Stand? *</label>
-                                        <select name="with_stand" required class="input-field">
-                                            <option value="Yes">Yes</option>
-                                            <option value="No">No</option>
-                                        </select>
-                                    </div>
-
-                                <?php elseif ($cat === 'Souvenirs'): ?>
-                                    <div style="margin-bottom:1rem;">
-                                        <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Type *</label>
-                                        <input type="text" name="type" required class="input-field" placeholder="Mug, Keychain, etc.">
-                                    </div>
-                                    <div style="margin-bottom:1rem;">
-                                        <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Custom Print? *</label>
-                                        <select name="custom_print" required class="input-field">
-                                            <option value="Yes">Yes</option>
-                                            <option value="No">No</option>
-                                        </select>
-                                    </div>
-                                <?php endif; ?>
-
-                                <!-- Common Fields -->
-                                <div style="margin-top:1.5rem; padding-top:1.5rem; border-top:1px dashed #d1d5db;">
-                                    <div style="margin-bottom:1rem;">
-                                        <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">
-                                            Upload Design/Reference (JPG or PNG only) *
-                                        </label>
-                                        <input type="file" name="design_upload" required class="input-field" accept=".jpg,.jpeg,.png" style="padding:0.4rem;">
-                                        <p style="font-size:0.75rem; color:#6b7280; margin-top:4px;">Accepted: JPG, PNG · Max size: 5MB</p>
-                                    </div>
-
-                                    <div style="margin-bottom:1rem;">
-                                        <label style="display:block; font-size:0.875rem; font-weight:600; margin-bottom:0.4rem;">Additional Notes</label>
-                                        <textarea name="notes" rows="2" class="input-field" placeholder="Any special instructions..."></textarea>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div style="margin-bottom:2rem;">
-                            <label style="display:block; font-size:0.875rem; font-weight:700; color:#374151; margin-bottom:0.5rem;">Total Quantity</label>
-                            <div style="display:flex; align-items:center; gap:12px;">
-                                <button type="button" onclick="decrementQty()" style="width:44px; height:44px; border:1px solid #d1d5db; background:white; border-radius:8px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:1.2rem; font-weight:600;">-</button>
-                                <input type="number" name="quantity" id="quantity" value="1" min="1" max="<?php echo $product['stock_quantity']; ?>" style="width:70px; height:44px; text-align:center; border:1px solid #d1d5db; border-radius:8px; font-weight:600; font-size:1.1rem;">
-                                <button type="button" onclick="incrementQty()" style="width:44px; height:44px; border:1px solid #d1d5db; background:white; border-radius:8px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:1.2rem; font-weight:600;">+</button>
-                                <span style="font-size:0.875rem; color:#6b7280; font-weight:500;"><?php echo $product['stock_quantity']; ?> items available</span>
-                            </div>
-                        </div>
-
-                        <div style="display:grid; grid-template-columns:10fr 21fr; gap:1rem;">
-                            <button type="submit" name="add_to_cart" value="1" class="btn-secondary" :disabled="!isValid" style="padding:1.1rem; font-weight:600; cursor:pointer; border-radius:10px; opacity: 1;" :style="!isValid ? 'opacity:0.5; cursor:not-allowed' : ''">Add to Cart</button>
-                            <button type="submit" name="buy_now" value="1" class="btn-primary" :disabled="!isValid" style="padding:1.1rem; font-weight:600; cursor:pointer; border-radius:10px; opacity: 1;" :style="!isValid ? 'opacity:0.5; cursor:not-allowed' : ''">BUY IT NOW</button>
-                        </div>
-                        
-                        <p x-show="!isValid" style="color:#ef4444; font-size:0.75rem; margin-top:10px; text-align:center; font-weight:500;">
-                            Please fill out all required fields and upload a design to proceed.
-                        </p>
-                    </form>
-                <?php else: ?>
-                    <div style="padding:1rem; background:#fee2e2; color:#991b1b; border-radius:8px; text-align:center; font-weight:600;">
-                        Out of Stock
-                    </div>
-                <?php endif; ?>
+                </div>
             </div>
         </div>
-    </div>
-</div>
 
-<script>
-    function incrementQty() {
-        const input = document.getElementById('quantity');
-        const max = parseInt(input.getAttribute('max'));
-        let val = parseInt(input.value);
-        if (val < max) {
-            input.value = val + 1;
-        }
+        <!-- Global Blinking Fix: Disable Header Blur when Modal is Open -->
+        <style>
+             /* Remove Nav Header backdrop-filter if modal is open to prevent Chromium flickering */
+             body:has(.order-modal-overlay:not([style*="display: none"])) #main-header,
+             body.modal-open #main-header {
+                 backdrop-filter: none !important;
+                 -webkit-backdrop-filter: none !important;
+                 background: rgba(255, 255, 255, 1) !important;
+             }
+        </style>
+
+        <!-- Multi-Step Modal -->
+        <div x-show="isOpen" x-cloak class="order-modal-overlay">
+                            
+                            <div @click.away="isOpen = false" 
+                                 x-show="isOpen"
+                                 x-transition:enter="transition ease-out duration-300"
+                                 x-transition:enter-start="opacity-0 transform scale-95 translate-y-4"
+                                 x-transition:enter-end="opacity-100 transform scale-100 translate-y-0"
+                                 class="card flex flex-col" 
+                                 style="max-width:600px; width:100%; max-height:90vh; border-radius:0; box-shadow:0 25px 50px -12px rgba(0,0,0,0.5); overflow:hidden; border:1px solid #e5e7eb; background:white; position:relative; will-change: transform; transform: translateZ(0);">
+                                
+                                <!-- Modal Header (Fixed at Top) -->
+                                <div style="padding:1.5rem 2rem; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center; background:white;">
+                                    <div>
+                                        <h2 style="font-size:1.25rem; font-weight:800; color:black; margin:0; text-transform:uppercase; letter-spacing:0.05em;">Product Customization</h2>
+                                        <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+                                            <span style="font-size:0.75rem; font-weight:800; color:white; background:black; padding:2px 8px; border-radius:0;" x-text="'STEP ' + step"></span>
+                                             <p style="font-size:0.875rem; color:#64748b; margin:0; font-weight:600; text-transform:uppercase;" 
+                                                x-text="(productCategory === 'Sintraboard & Standees' || productCategory === 'Sintraboard Flat') ? 
+                                                        (step==1?'Board Details':step==2?'Design Upload':step==3?'Stand & Finishing':'Final Review') : 
+                                                        (productCategory === 'T-Shirts') ? 
+                                                        (step==1?'Shirt Details':step==2?'Printing Details':step==3?'Design Upload':'Final Review') : 
+                                                        (productCategory === 'Tarpaulin') ? 
+                                                        (step==1?'Size & Material':step==2?'Finishing Options':step==3?'Design Details':'Final Review') : 
+                                                        (step==1?'Vehicle Details':step==2?'Design Upload':step==3?'Size & Options':'Final Review')"></p>
+                                        </div>
+                                    </div>
+                                    <button type="button" @click="isOpen = false" style="background:transparent; border:none; width:36px; height:36px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:black; font-size:1.2rem; transition: color 0.2s;" onmouseover="this.style.color='#64748b'" onmouseout="this.style.color='black'">✕</button>
+                                </div>
+
+                                <div style="height:4px; width:100%; background:#f1f5f9; display:flex;">
+                                    <div :style="'width: ' + (step/4*100) + '%; transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);'" style="height:100%; background:black;"></div>
+                                </div>
+
+                                <form method="POST" enctype="multipart/form-data" id="customization-form" style="display:flex; flex-direction:column; flex:1; overflow:hidden; min-height:0;">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="product_id" value="<?php echo $product_id; ?>">
+                                    
+                                    <!-- Scrollable Form Content -->
+                                    <div style="padding:2rem; flex:1; overflow-y:auto; scrollbar-width: thin; scrollbar-color: #cbd5e1 #f8fafc; min-height:0;">
+                                        
+                                        <?php if ($error_msg): ?>
+                                            <div style="background-color: #fef2f2; border: 1px solid #fee2e2; border-radius:0; padding:1.25rem; margin-bottom:1.5rem; color: #b91c1c; font-size:0.85rem; display:flex; gap:0.75rem; align-items:flex-start; border-left:4px solid #b91c1c;" id="modal-error-gate">
+                                                 <span style="font-size:1.1rem;">🚫</span>
+                                                 <div style="font-weight:600;"><?php echo $error_msg; ?></div>
+                                            </div>
+                                        <?php endif; ?>
+                                        
+                                        <!-- Step 1: Specific Details -->
+                                        <div x-show="step === 1">
+
+                                            <!-- Sintra Board Fields (Standees & Flat) -->
+                                            <div x-show="productCategory === 'Sintraboard & Standees' || productCategory === 'Sintraboard Flat'" style="display:grid; grid-template-columns:1fr; gap:1.25rem;">
+                                                <div style="text-align:center; padding-bottom:0.75rem;">
+                                                    <h3 style="font-weight:800; color:black; margin:0; text-transform:uppercase; letter-spacing:0.05em;">Size & Board Details</h3>
+                                                </div>
+                                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                                                    <div>
+                                                        <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Width (inches) *</label>
+                                                        <input type="number" name="width" step="0.01" min="0.01" class="input-field" placeholder="e.g. 24" style="width:100%; border-radius:0; border:1px solid #d1d5db;" :required="productCategory.includes('Sintraboard')">
+                                                    </div>
+                                                    <div>
+                                                        <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Height (inches) *</label>
+                                                        <input type="number" name="height" step="0.01" min="0.01" class="input-field" placeholder="e.g. 36" style="width:100%; border-radius:0; border:1px solid #d1d5db;" :required="productCategory.includes('Sintraboard')">
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Thickness *</label>
+                                                    <select name="thickness" class="input-field" style="width:100%; border-radius:0; border:1px solid #d1d5db;" :required="productCategory.includes('Sintraboard')">
+                                                        <option value="" disabled selected>Select Thickness</option>
+                                                        <option value="3mm">3mm</option>
+                                                        <option value="5mm">5mm</option>
+                                                        <option value="10mm">10mm</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+
+                                            <!-- T-Shirt Details -->
+                                            <div x-show="productCategory === 'T-Shirts'" style="display:grid; grid-template-columns:1fr; gap:1.25rem;">
+                                                <div style="text-align:center; padding-bottom:0.75rem;">
+                                                    <h3 style="font-weight:800; color:black; margin:0; text-transform:uppercase; letter-spacing:0.05em;">Shirt Details</h3>
+                                                </div>
+
+                                                <div style="background:#f9fafb; padding:1.25rem; border-radius:0; border:1px solid #e5e7eb;">
+                                                    <label style="display:block; font-size:0.875rem; font-weight:800; margin-bottom:0.75rem; color:black; text-transform:uppercase;">Shirt Source *</label>
+                                                    <div style="display:flex; gap:0.75rem;">
+                                                        <label style="flex:1; display:flex; align-items:center; justify-content:center; gap:8px; padding:0.75rem; background:white; border:2px solid; border-radius:0; cursor:pointer; font-weight:700; transition:all 0.2s; text-transform:uppercase; font-size:0.85rem;" :style="shirtSource === 'Shop' ? 'border-color:black; color:black' : 'border-color:#e5e7eb; color:#6b7280'">
+                                                            <input type="radio" name="shirt_source" value="Shop" x-model="shirtSource" class="sr-only">
+                                                            Shop-Provided Shirt
+                                                        </label>
+                                                        <label style="flex:1; display:flex; align-items:center; justify-content:center; gap:8px; padding:0.75rem; background:white; border:2px solid; border-radius:0; cursor:pointer; font-weight:700; transition:all 0.2s; text-transform:uppercase; font-size:0.85rem;" :style="shirtSource === 'Client' ? 'border-color:black; color:black' : 'border-color:#e5e7eb; color:#6b7280'">
+                                                            <input type="radio" name="shirt_source" value="Client" x-model="shirtSource" class="sr-only">
+                                                            Client-Provided Shirt
+                                                        </label>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Shop-Provided Fields -->
+                                                <div x-show="shirtSource === 'Shop'" x-transition style="display:grid; grid-template-columns:1fr; gap:1.25rem;">
+                                                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                                                        <div>
+                                                            <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Shirt Type *</label>
+                                                            <select name="shirt_type" class="input-field" style="width:100%; border-radius:0; border:1px solid #d1d5db;">
+                                                                <option value="" disabled selected>Select Type</option>
+                                                                <option value="Round Neck">Round Neck</option>
+                                                                <option value="V-Neck">V-Neck</option>
+                                                                <option value="Polo Shirt">Polo Shirt</option>
+                                                                <option value="Oversized">Oversized</option>
+                                                                <option value="Long Sleeve">Long Sleeve</option>
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Shirt Color *</label>
+                                                            <input type="text" name="shop_shirt_color" class="input-field" placeholder="e.g. Black, White, Navy..." style="width:100%; border-radius:0; border:1px solid #d1d5db;" :required="productCategory === 'T-Shirts' && shirtSource === 'Shop'">
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Size *</label>
+                                                        <select name="shop_shirt_size" class="input-field" style="width:100%; border-radius:0; border:1px solid #d1d5db;" :required="productCategory === 'T-Shirts' && shirtSource === 'Shop'">
+                                                            <option value="" disabled selected>Select Size</option>
+                                                            <option value="XS">XS</option>
+                                                            <option value="S">S</option>
+                                                            <option value="M">M</option>
+                                                            <option value="L">L</option>
+                                                            <option value="XL">XL</option>
+                                                            <option value="XXL">XXL</option>
+                                                            <option value="Custom Size">Custom Size</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Client-Provided Fields -->
+                                                <div x-show="shirtSource === 'Client'" x-transition style="display:grid; grid-template-columns:1fr; gap:1.25rem;">
+                                                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                                                        <div>
+                                                            <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Shirt Color *</label>
+                                                            <input type="text" name="client_shirt_color" class="input-field" placeholder="Color of your shirt" style="width:100%; border-radius:0; border:1px solid #d1d5db;" :required="productCategory === 'T-Shirts' && shirtSource === 'Client'">
+                                                        </div>
+                                                        <div>
+                                                            <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Material *</label>
+                                                            <select name="client_shirt_material" class="input-field" style="width:100%; border-radius:0; border:1px solid #d1d5db;" :required="productCategory === 'T-Shirts' && shirtSource === 'Client'">
+                                                                <option value="" disabled selected>Select Material</option>
+                                                                <option value="Cotton">Cotton</option>
+                                                                <option value="Polyester">Polyester</option>
+                                                                <option value="Dry-fit">Dry-fit</option>
+                                                                <option value="Unknown">Unknown</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                    <div style="background:#fef3c7; border:1px solid #fde68a; padding:1rem; display:flex; gap:0.5rem; align-items:flex-start;">
+                                                        <input type="checkbox" name="material_disclaimer" id="material_disclaimer" value="Agreed" style="margin-top:0.25rem; accent-color:black;">
+                                                        <div>
+                                                            <label for="material_disclaimer" style="font-size:0.8rem; font-weight:700; color:#92400e; cursor:pointer;">I understand that printing quality depends on the shirt material provided.</label>
+                                                            <p style="font-size:0.75rem; color:#b45309; margin-top:0.25rem;">Please bring your shirt before printing starts.</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Tarpaulin Details -->
+                                            <div x-show="productCategory === 'Tarpaulin'" style="display:grid; grid-template-columns:1fr; gap:1.25rem;">
+                                                <div style="text-align:center; padding-bottom:0.75rem;">
+                                                    <h3 style="font-weight:800; color:black; margin:0; text-transform:uppercase; letter-spacing:0.05em;">Size & Material</h3>
+                                                </div>
+
+                                                <div style="background:#f9fafb; padding:1.25rem; border-radius:0; border:1px solid #e5e7eb;">
+                                                    <label style="display:block; font-size:0.875rem; font-weight:800; margin-bottom:0.75rem; color:black; text-transform:uppercase;">Size Specification *</label>
+                                                    <div style="display:flex; gap:0.75rem; margin-bottom:1rem;">
+                                                        <label style="flex:1; display:flex; align-items:center; justify-content:center; gap:8px; padding:0.75rem; background:white; border:2px solid; border-radius:0; cursor:pointer; font-weight:700; transition:all 0.2s; text-transform:uppercase; font-size:0.85rem;" :style="tarpSizeOption === 'Preset' ? 'border-color:black; color:black' : 'border-color:#e5e7eb; color:#6b7280'">
+                                                            <input type="radio" name="tarp_size_option" value="Preset" x-model="tarpSizeOption" class="sr-only">
+                                                            Preset Sizes
+                                                        </label>
+                                                        <label style="flex:1; display:flex; align-items:center; justify-content:center; gap:8px; padding:0.75rem; background:white; border:2px solid; border-radius:0; cursor:pointer; font-weight:700; transition:all 0.2s; text-transform:uppercase; font-size:0.85rem;" :style="tarpSizeOption === 'Custom' ? 'border-color:black; color:black' : 'border-color:#e5e7eb; color:#6b7280'">
+                                                            <input type="radio" name="tarp_size_option" value="Custom" x-model="tarpSizeOption" class="sr-only">
+                                                            Custom Size
+                                                        </label>
+                                                    </div>
+
+                                                    <!-- Preset Sizes -->
+                                                    <div x-show="tarpSizeOption === 'Preset'" x-transition>
+                                                        <select name="tarp_preset_size" x-model="tarpPresetSize" class="input-field" style="width:100%; border-radius:0; border:1px solid #d1d5db;">
+                                                            <option value="2x3">2x3 ft</option>
+                                                            <option value="3x5">3x5 ft</option>
+                                                            <option value="4x6">4x6 ft</option>
+                                                            <option value="5x7">5x7 ft</option>
+                                                            <option value="6x8">6x8 ft</option>
+                                                        </select>
+                                                    </div>
+
+                                                    <!-- Custom Sizes -->
+                                                    <div x-show="tarpSizeOption === 'Custom'" x-transition style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                                                        <div>
+                                                            <label style="display:block; font-size:0.75rem; font-weight:800; color:#64748b; margin-bottom:0.25rem;">WIDTH</label>
+                                                            <input type="number" name="tarp_width" x-model="tarpWidth" min="0.1" step="0.1" class="input-field" style="width:100%; border-radius:0; border:1px solid #d1d5db;">
+                                                        </div>
+                                                        <div>
+                                                            <label style="display:block; font-size:0.75rem; font-weight:800; color:#64748b; margin-bottom:0.25rem;">HEIGHT</label>
+                                                            <input type="number" name="tarp_height" x-model="tarpHeight" min="0.1" step="0.1" class="input-field" style="width:100%; border-radius:0; border:1px solid #d1d5db;">
+                                                        </div>
+                                                        <div style="grid-column: span 2;">
+                                                            <label style="display:block; font-size:0.75rem; font-weight:800; color:#64748b; margin-bottom:0.25rem;">UNIT</label>
+                                                            <select name="tarp_unit" x-model="tarpUnit" class="input-field" style="width:100%; border-radius:0; border:1px solid #d1d5db;">
+                                                                <option value="ft">Feet (ft)</option>
+                                                                <option value="in">Inches (in)</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                                                    <div>
+                                                        <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Material *</label>
+                                                        <select name="tarp_material" x-model="tarpMaterial" class="input-field" style="width:100%; border-radius:0; border:1px solid #d1d5db;">
+                                                            <option value="10oz">10oz (Standard)</option>
+                                                            <option value="13oz">13oz (Thicker)</option>
+                                                            <option value="15oz">15oz (Heavy Duty)</option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Finish Type *</label>
+                                                        <select name="tarp_finish" x-model="tarpFinish" class="input-field" style="width:100%; border-radius:0; border:1px solid #d1d5db;">
+                                                            <option value="Glossy">Glossy</option>
+                                                            <option value="Matte">Matte</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Generic Vehicle/Decal Fields (all other categories) -->
+                                            <div x-show="productCategory !== 'Sintraboard & Standees' && productCategory !== 'Sintraboard Flat' && productCategory !== 'T-Shirts' && productCategory !== 'Tarpaulin'" style="display:grid; grid-template-columns:1fr; gap:1.25rem;">
+                                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                                                    <div>
+                                                        <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Brand *</label>
+                                                        <input type="text" name="vehicle_brand" class="input-field" placeholder="e.g. Honda" style="width:100%; border-radius:0; border:1px solid #d1d5db;" :required="productCategory === 'Decals & Stickers' || productCategory === 'Stickers'">
+                                                    </div>
+                                                    <div>
+                                                        <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Model *</label>
+                                                        <input type="text" name="vehicle_model" class="input-field" placeholder="e.g. Click 125i" style="width:100%; border-radius:0; border:1px solid #d1d5db;" :required="productCategory === 'Decals & Stickers' || productCategory === 'Stickers'">
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Year Model *</label>
+                                                    <input type="number" name="vehicle_year" min="1900" max="<?php echo date('Y') + 1; ?>" class="input-field" placeholder="e.g. 2024" style="width:100%; border-radius:0; border:1px solid #d1d5db;" :required="productCategory === 'Decals & Stickers' || productCategory === 'Stickers'">
+                                                </div>
+                                            </div>
+
+                                        </div>
+
+                                        <!-- Step 2: Design Details -->
+                                        <div x-show="step === 2">
+                                            <!-- T-Shirt Printing Details -->
+                                            <div x-show="productCategory === 'T-Shirts'" style="display:grid; grid-template-columns:1fr; gap:1.25rem;" x-cloak>
+                                                <div style="text-align:center; padding-bottom:0.75rem;">
+                                                    <h3 style="font-weight:800; color:black; margin:0; text-transform:uppercase; letter-spacing:0.05em;">Printing Details</h3>
+                                                </div>
+                                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                                                    <div>
+                                                        <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Printing Method *</label>
+                                                        <select name="printing_method" class="input-field" style="width:100%; border-radius:0; border:1px solid #d1d5db;">
+                                                            <option value="" disabled selected>Select Method</option>
+                                                            <option value="Sublimation">Sublimation</option>
+                                                            <option value="Heat Transfer Vinyl (HTV)">Heat Transfer Vinyl (HTV)</option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Design Placement *</label>
+                                                        <select name="shirt_placement" class="input-field" style="width:100%; border-radius:0; border:1px solid #d1d5db;">
+                                                            <option value="" disabled selected>Select Placement</option>
+                                                            <option value="Front Only">Front Only</option>
+                                                            <option value="Back Only">Back Only</option>
+                                                            <option value="Front & Back">Front & Back</option>
+                                                            <option value="Left Chest">Left Chest</option>
+                                                            <option value="Full Front">Full Front</option>
+                                                            <option value="Sleeve Print">Sleeve Print</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Tarpaulin Finishing Options -->
+                                            <div x-show="productCategory === 'Tarpaulin'" style="display:grid; grid-template-columns:1fr; gap:1.25rem;">
+                                                <div style="text-align:center; padding-bottom:0.75rem;">
+                                                    <h3 style="font-weight:800; color:black; margin:0; text-transform:uppercase; letter-spacing:0.05em;">Finishing Options</h3>
+                                                </div>
+
+                                                <div>
+                                                    <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Edges *</label>
+                                                    <select name="tarp_edges" x-model="tarpEdges" class="input-field" style="width:100%; border-radius:0; border:1px solid #d1d5db;">
+                                                        <option value="Heat Cut Only">Heat Cut Only (Standard)</option>
+                                                        <option value="Folded & Sewn Edges">Folded & Sewn Edges (+₱2/sqft)</option>
+                                                    </select>
+                                                </div>
+
+                                                <div style="background:#f9fafb; padding:1.25rem; border-radius:0; border:1px solid #e5e7eb;">
+                                                    <label style="display:block; font-size:0.875rem; font-weight:800; margin-bottom:0.75rem; color:black; text-transform:uppercase;">Grommets / Eyelets *</label>
+                                                    <select name="tarp_grommet_option" x-model="tarpGrommetOption" class="input-field" style="width:100%; border-radius:0; border:1px solid #d1d5db;">
+                                                        <option value="No Grommets">No Grommets</option>
+                                                        <option value="With Grommets (All Sides)">With Grommets (All Sides)</option>
+                                                        <option value="Top & Bottom Only">Top & Bottom Only</option>
+                                                        <option value="Custom Placement">Custom Placement</option>
+                                                    </select>
+                                                    
+                                                    <div x-show="tarpGrommetOption === 'Custom Placement'" x-transition style="margin-top:1rem;">
+                                                        <textarea name="tarp_grommet_instructions" class="input-field" placeholder="Describe where you want the eyelets placed..." style="width:100%; border-radius:0; border:1px solid #d1d5db; min-height:60px;"></textarea>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div x-show="productCategory !== 'T-Shirts' && productCategory !== 'Tarpaulin'" style="display:grid; grid-template-columns:1fr; gap:1.25rem;">
+                                                <div style="text-align:center; padding-bottom:0.75rem;">
+                                                    <h3 style="font-weight:800; color:black; margin:0; text-transform:uppercase; letter-spacing:0.05em;">Design Details</h3>
+                                                </div>
+
+                                                <div style="background:#f9fafb; border:2px dashed #d1d5db; border-radius:0; padding:1.25rem;">
+                                                    <label style="display:block; font-size:0.875rem; font-weight:800; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Upload Final Design * <span style="font-weight:500; font-size:0.75rem; color:#6b7280; text-transform:none;">(JPG, PNG, AI, PSD)</span></label>
+                                                    <input type="file" name="design_upload" id="design_upload_field" class="input-field" accept=".jpg,.jpeg,.png,.ai,.psd" style="width:100%; background:white; padding:0.5rem; border-radius:0; border:1px solid #d1d5db;" :required="productCategory !== 'T-Shirts' && productCategory !== 'Tarpaulin'">
+                                                    <p style="font-size:0.7rem; color:#6b7280; margin-top:6px;">📎 Mandatory for manufacturing. Max: 5MB</p>
+                                                </div>
+                                                
+                                                <div>
+                                                    <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Upload Reference Image <span style="font-weight:500; font-size:0.75rem; color:#6b7280; text-transform:none;">(Optional)</span></label>
+                                                    <input type="file" name="reference_upload" class="input-field" accept=".jpg,.jpeg,.png" style="width:100%; border-radius:0; padding:0.5rem; border:1px solid #d1d5db;">
+                                                    <p style="font-size:0.7rem; color:#6b7280; margin-top:6px;">📎 Accepted: JPG, PNG</p>
+                                                </div>
+                                                
+                                                <div>
+                                                    <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Design Description <span style="font-weight:500; font-size:0.75rem; color:#6b7280; text-transform:none;">(Optional)</span></label>
+                                                    <textarea name="design_description" rows="3" class="input-field" placeholder="Describe your preferred style, colors, or special instructions..." style="width:100%; border-radius:0; border:1px solid #d1d5db;"></textarea>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Step 3: Mixed (Upload Design / Options) -->
+                                        <div x-show="step === 3">
+
+                                            <!-- T-Shirt Design Upload & Size Options -->
+                                            <div x-show="productCategory === 'T-Shirts'" style="display:grid; grid-template-columns:1fr; gap:1.25rem;" x-cloak>
+                                                <div style="text-align:center; padding-bottom:0.75rem;">
+                                                    <h3 style="font-weight:800; color:black; margin:0; text-transform:uppercase; letter-spacing:0.05em;">Design Upload</h3>
+                                                </div>
+
+                                                <div style="background:#f9fafb; border:2px dashed #d1d5db; border-radius:0; padding:1.25rem;">
+                                                    <label style="display:block; font-size:0.875rem; font-weight:800; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Upload Final Design * <span style="font-weight:500; font-size:0.75rem; color:#6b7280; text-transform:none;">(JPG, PNG, PDF, AI)</span></label>
+                                                    <input type="file" name="tshirt_design_upload" id="tshirt_design_upload_field" class="input-field" accept=".jpg,.jpeg,.png,.pdf,.ai" style="width:100%; background:white; padding:0.5rem; border-radius:0; border:1px solid #d1d5db;" :required="productCategory === 'T-Shirts'">
+                                                    <p style="font-size:0.7rem; color:#6b7280; margin-top:6px;">📎 Max file size: 10MB</p>
+                                                </div>
+                                                
+                                                <div style="background:#f9fafb; padding:1.25rem; border-radius:0; border:1px solid #e5e7eb;">
+                                                    <label style="display:block; font-size:0.875rem; font-weight:800; margin-bottom:0.75rem; color:black; text-transform:uppercase;">Print Size *</label>
+                                                    <select name="print_size" class="input-field" x-model="printSize" style="width:100%; border-radius:0; border:1px solid #d1d5db;">
+                                                        <option value="" disabled selected>Select Print Size</option>
+                                                        <option value="Small (Pocket Size)">Small (Pocket Size)</option>
+                                                        <option value="Medium (A4)">Medium (A4)</option>
+                                                        <option value="Large (A3)">Large (A3)</option>
+                                                        <option value="Custom Size">Custom Size</option>
+                                                    </select>
+                                                    
+                                                    <div x-show="printSize === 'Custom Size'" x-transition style="margin-top:1rem; display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+                                                        <div>
+                                                            <input type="text" name="tshirt_custom_width" class="input-field" placeholder="Width (in or cm)" style="width:100%; border-radius:0; border:1px solid #d1d5db;">
+                                                        </div>
+                                                        <div>
+                                                            <input type="text" name="tshirt_custom_height" class="input-field" placeholder="Height (in or cm)" style="width:100%; border-radius:0; border:1px solid #d1d5db;">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div>
+                                                    <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Additional Notes <span style="font-weight:500; font-size:0.75rem; color:#6b7280; text-transform:none;">(Optional)</span></label>
+                                                    <textarea name="tshirt_design_description" rows="3" class="input-field" placeholder="Add special instructions (e.g., palakihin ang logo, tanggalin background, center design)." style="width:100%; border-radius:0; border:1px solid #d1d5db;"></textarea>
+                                                </div>
+                                            </div>
+
+                                            <!-- Tarpaulin Design Details -->
+                                            <div x-show="productCategory === 'Tarpaulin'" style="display:grid; grid-template-columns:1fr; gap:1.25rem;">
+                                                <div style="text-align:center; padding-bottom:0.75rem;">
+                                                    <h3 style="font-weight:800; color:black; margin:0; text-transform:uppercase; letter-spacing:0.05em;">Design Details</h3>
+                                                </div>
+
+                                                <div style="background:#f9fafb; border:2px dashed #d1d5db; border-radius:0; padding:1.25rem;">
+                                                    <label style="display:block; font-size:0.875rem; font-weight:800; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Upload Design * <span style="font-weight:500; font-size:0.75rem; color:#6b7280; text-transform:none;">(JPG, PNG, PDF)</span></label>
+                                                    <input type="file" name="tarp_design_upload" id="tarp_design_upload_field" class="input-field" accept=".jpg,.jpeg,.png,.pdf" style="width:100%; background:white; padding:0.5rem; border-radius:0; border:1px solid #d1d5db;" :required="productCategory === 'Tarpaulin'">
+                                                    <p style="font-size:0.7rem; color:#6b7280; margin-top:6px;">📎 Max file size: 10MB</p>
+                                                </div>
+
+                                                <div style="background:#f9fafb; padding:1.25rem; border-radius:0; border:1px solid #e5e7eb;">
+                                                    <label style="display:block; font-size:0.875rem; font-weight:800; margin-bottom:0.75rem; color:black; text-transform:uppercase;">Design Service Option *</label>
+                                                    <div style="display:flex; gap:0.75rem; margin-bottom:1rem;">
+                                                        <label style="flex:1; display:flex; align-items:center; justify-content:center; gap:8px; padding:0.75rem; background:white; border:2px solid; border-radius:0; cursor:pointer; font-weight:700; transition:all 0.2s; text-transform:uppercase; font-size:0.85rem;" :style="tarpDesignService === 'Ready' ? 'border-color:black; color:black' : 'border-color:#e5e7eb; color:#6b7280'">
+                                                            <input type="radio" name="tarp_design_service" value="Ready" x-model="tarpDesignService" class="sr-only">
+                                                            I have ready design
+                                                        </label>
+                                                        <label style="flex:1; display:flex; align-items:center; justify-content:center; gap:8px; padding:0.75rem; background:white; border:2px solid; border-radius:0; cursor:pointer; font-weight:700; transition:all 0.2s; text-transform:uppercase; font-size:0.85rem;" :style="tarpDesignService === 'Requested' ? 'border-color:black; color:black' : 'border-color:#e5e7eb; color:#6b7280'">
+                                                            <input type="radio" name="tarp_design_service" value="Requested" x-model="tarpDesignService" class="sr-only">
+                                                            I need layout
+                                                        </label>
+                                                    </div>
+                                                    
+                                                    <div x-show="tarpDesignService === 'Requested'" x-transition>
+                                                        <textarea name="tarp_design_description" class="input-field" placeholder="Describe your event or theme (e.g., Birthday, Graduation, Business promotion)..." style="width:100%; border-radius:0; border:1px solid #d1d5db; min-height:80px;"></textarea>
+                                                        <p style="font-size:0.7rem; color:#92400e; margin-top:6px; font-weight:700;">Note: Design service adds ₱50.00 to total.</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Sintraboard Stand & Finishing -->
+                                            <div x-show="productCategory === 'Sintraboard & Standees' || productCategory === 'Sintraboard Flat'" style="display:grid; grid-template-columns:1fr; gap:1.25rem;" x-cloak>
+                                                <div style="text-align:center; padding-bottom:0.75rem;">
+                                                    <h3 style="font-weight:800; color:black; margin:0; text-transform:uppercase; letter-spacing:0.05em;">Stand & Finishing Options</h3>
+                                                </div>
+
+                                                <!-- Stand Type (hidden for Sintra Board Flat) -->
+                                                <div x-show="productCategory === 'Sintraboard & Standees'">
+                                                    <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.75rem; color:black; text-transform:uppercase;">Stand Type *</label>
+                                                    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.5rem;">
+                                                        <?php foreach(['With Metal Stand'=>'Metal Stand','With Foldable Support (Easel Type)'=>'Foldable','Board Only (No Stand)'=>'Board Only'] as $val=>$label): ?>
+                                                        <label style="display:flex; align-items:center; justify-content:center; gap:6px; padding:0.75rem; border:1px solid #d1d5db; border-radius:0; cursor:pointer; font-size:0.8rem; font-weight:700; color:black; text-align:center; transition: all 0.2s; text-transform:uppercase;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='transparent'">
+                                                            <input type="radio" name="stand_type" value="<?php echo $val; ?>" style="accent-color:black;">
+                                                            <?php echo $label; ?>
+                                                        </label>
+                                                        <?php endforeach; ?>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Flat Type Options (visible for Sintra Board Flat) -->
+                                                <div x-show="productCategory === 'Sintraboard Flat'" x-cloak>
+                                                    <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.75rem; color:black; text-transform:uppercase;">Flat Type Options *</label>
+                                                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
+                                                        <?php foreach(['With Double-Sided Foam Tape'=>'With Tape', 'With Holes/Eyelets'=>'With Eyelets', 'Board Only (No Adhesive)'=>'Board Only'] as $val=>$label): ?>
+                                                        <label style="display:flex; align-items:center; justify-content:center; gap:6px; padding:0.75rem; border:1px solid #d1d5db; border-radius:0; cursor:pointer; font-size:0.8rem; font-weight:700; color:black; text-align:center; transition: all 0.2s; text-transform:uppercase;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='transparent'">
+                                                            <input type="radio" name="flat_type" value="<?php echo $val; ?>" style="accent-color:black;">
+                                                            <?php echo $label; ?>
+                                                        </label>
+                                                        <?php endforeach; ?>
+                                                    </div>
+                                                </div>
+
+                                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                                                    <div>
+                                                        <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Lamination</label>
+                                                        <select name="lamination" class="input-field" style="width:100%; border-radius:0; border:1px solid #d1d5db;">
+                                                            <option value="No Lamination">No Lamination</option>
+                                                            <option value="Matte">Matte</option>
+                                                            <option value="Gloss">Gloss</option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Cut Type *</label>
+                                                        <select name="cut_type" class="input-field" style="width:100%; border-radius:0; border:1px solid #d1d5db;">
+                                                            <option value="Standard Rectangle Cut">Standard Rectangle Cut</option>
+                                                            <option value="Die-Cut (Custom Shape)">Die-Cut (Custom Shape)</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Generic Decal Size & Options -->
+                                            <div x-show="productCategory !== 'Sintraboard & Standees' && productCategory !== 'Sintraboard Flat' && productCategory !== 'T-Shirts' && productCategory !== 'Tarpaulin'" style="display:grid; grid-template-columns:1fr; gap:1.25rem;">
+                                                <div x-show="productCategory === 'Decals & Stickers' || productCategory === 'Stickers'" style="text-align:center; padding-bottom:0.75rem;">
+                                                    <h3 style="font-weight:800; color:black; margin:0; text-transform:uppercase; letter-spacing:0.05em;">Size & Options</h3>
+                                                </div>
+
+                                                <div>
+                                                    <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.5rem; color:black; text-transform:uppercase;">Placement *</label>
+                                                    <select name="placement" class="input-field" style="width:100%; border-radius:0; border:1px solid #d1d5db;">
+                                                        <option value="" disabled selected>Select placement</option>
+                                                        <option value="Side Fairings">Side Fairings</option>
+                                                        <option value="Tank">Tank</option>
+                                                        <option value="Fender">Fender</option>
+                                                        <option value="Door Panel">Door Panel</option>
+                                                        <option value="Hood">Hood</option>
+                                                        <option value="Windshield">Windshield</option>
+                                                        <option value="Full Body">Full Body</option>
+                                                        <option value="Others">Others</option>
+                                                    </select>
+                                                </div>
+                                                
+                                                <div style="background:#f9fafb; padding:1.25rem; border-radius:0; border:1px solid #e5e7eb;">
+                                                    <label style="display:block; font-size:0.875rem; font-weight:800; margin-bottom:0.75rem; color:black; text-transform:uppercase;">Size Options *</label>
+                                                    <div style="display:flex; gap:0.75rem;">
+                                                        <label style="flex:1; display:flex; align-items:center; justify-content:center; gap:8px; padding:0.75rem; background:white; border:2px solid; border-radius:0; cursor:pointer; font-weight:700; transition:all 0.2s; text-transform:uppercase; font-size:0.85rem;" :style="sizeOption === 'OEM Size' ? 'border-color:black; color:black' : 'border-color:#e5e7eb; color:#6b7280'">
+                                                            <input type="radio" name="size_option" value="OEM Size" x-model="sizeOption" style="display:none;">
+                                                            OEM Standard
+                                                        </label>
+                                                        <label style="flex:1; display:flex; align-items:center; justify-content:center; gap:8px; padding:0.75rem; background:white; border:2px solid; border-radius:0; cursor:pointer; font-weight:700; transition:all 0.2s; text-transform:uppercase; font-size:0.85rem;" :style="sizeOption === 'Custom Size' ? 'border-color:black; color:black' : 'border-color:#e5e7eb; color:#6b7280'">
+                                                            <input type="radio" name="size_option" value="Custom Size" x-model="sizeOption" style="display:none;">
+                                                            Custom Size
+                                                        </label>
+                                                    </div>
+                                                    
+                                                    <div x-show="sizeOption === 'Custom Size'" x-transition style="margin-top:1rem; display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+                                                        <div>
+                                                            <input type="text" name="custom_width" class="input-field" placeholder="Width (in)" style="width:100%; border-radius:0; border:1px solid #d1d5db;">
+                                                        </div>
+                                                        <div>
+                                                            <input type="text" name="custom_height" class="input-field" placeholder="Height (in)" style="width:100%; border-radius:0; border:1px solid #d1d5db;">
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <label style="display:block; font-size:0.875rem; font-weight:700; margin-bottom:0.75rem; color:black; text-transform:uppercase;">Select Material *</label>
+                                                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
+                                                        <?php foreach(['Glossy Vinyl', 'Matte Vinyl', 'Reflectorized', 'Chrome', 'Carbon Fiber Texture'] as $mat): ?>
+                                                            <label style="display:flex; align-items:center; gap:6px; padding:0.6rem; border:1px solid #d1d5db; border-radius:0; cursor:pointer; font-size:0.8rem; font-weight:600; color:black; transition: background 0.2s; text-transform:uppercase;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='transparent'">
+                                                                <input type="radio" name="material_type" value="<?php echo $mat; ?>" style="accent-color:black;">
+                                                                <?php echo $mat; ?>
+                                                            </label>
+                                                        <?php endforeach; ?>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                        </div>
+
+                                        <!-- Step 4: Final Review -->
+                                        <div x-show="step === 4">
+                                            <div style="display:grid; grid-template-columns:1fr; gap:1.25rem;">
+                                                <div style="text-align:center; padding-bottom:1rem;">
+                                                    <h3 style="font-weight:800; color:black; margin:0; text-transform:uppercase; letter-spacing:0.05em;">Final Review</h3>
+                                                </div>
+
+                                                <div style="background:#f9fafb; border-radius:0; border:1px solid #e5e7eb; padding:1.5rem; text-align:center;">
+                                                    <p style="font-size:0.85rem; color:#6b7280; margin-bottom:0.25rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">Total Amount</p>
+                                                    <div style="font-size:2rem; font-weight:900; color:black; margin-bottom:1rem;" 
+                                                         x-text="productCategory === 'T-Shirts' && shirtSource === 'Client' ? 
+                                                                '₱' + (150 * orderQty).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : 
+                                                                productCategory === 'Tarpaulin' ? 
+                                                                '₱' + (totalTarpaulinPrice * orderQty).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : 
+                                                                (productCategory === 'Decals & Stickers' || productCategory === 'Stickers') ? 
+                                                                '₱' + (totalDecalPrice * orderQty).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : 
+                                                                '₱' + (<?php echo $product['price']; ?> * orderQty).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')">
+                                                        <?php echo format_currency($product['price']); ?>
+                                                    </div>
+                                                    
+                                                    <div style="height:1px; background:#e5e7eb; margin:1rem 0;"></div>
+
+                                                    <label style="display:block; font-size:0.875rem; font-weight:800; color:black; margin-bottom:1rem; text-transform:uppercase;">Select Quantity</label>
+                                                    <div style="display:flex; align-items:center; justify-content:center; gap:15px;">
+                                                        <button type="button" @click="if(orderQty > 1) orderQty--" style="width:40px; height:40px; border-radius:0; border:1px solid black; background:white; font-size:1.2rem; display:flex; align-items:center; justify-content:center; cursor:pointer; transition: all 0.2s;" onmouseover="this.style.background='black'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='black';">-</button>
+                                                        <input type="number" name="quantity" x-model="orderQty" min="1" max="<?php echo $product['stock_quantity']; ?>" style="width:70px; height:40px; border-radius:0; border:2px solid black; text-align:center; font-size:1.1rem; font-weight:800; color:black;">
+                                                        <button type="button" @click="if(orderQty < <?php echo $product['stock_quantity']; ?>) orderQty++" style="width:40px; height:40px; border-radius:0; border:1px solid black; background:white; font-size:1.2rem; display:flex; align-items:center; justify-content:center; cursor:pointer; transition: all 0.2s;" onmouseover="this.style.background='black'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='black';">+</button>
+                                                    </div>
+                                                    <p style="font-size:0.75rem; color:#6b7280; margin-top:10px; font-weight:600; text-transform:uppercase;"><?php echo $product['stock_quantity']; ?> items in stock</p>
+                                                </div>
+                                                
+                                                <div style="background:white; border:1px solid black; border-radius:0; padding:1rem; text-align:center;">
+                                                    <p style="margin:0; font-size:0.85rem; color:black; font-weight:600; line-height:1.4;">Please double-check all details before proceeding to your cart or checkout.</p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                    </div>
+
+                                    <!-- Modal Footer -->
+                                    <div style="padding:1.5rem 2rem; border-top:1px solid #e5e7eb; background:white; display:flex; gap:0.75rem; flex-shrink:0;">
+                                        <button type="button" 
+                                                x-show="step !== 1" 
+                                                @click="if(step > 1) step = step - 1" 
+                                                style="flex:1; padding:0.875rem; border-radius:0; font-weight:800; font-size:0.85rem; text-transform:uppercase; background:white; border:2px solid black; color:black; cursor:pointer; transition:all 0.2s;"
+                                                onmouseover="this.style.background='black'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='black';">
+                                            Back
+                                        </button>
+                                        
+                                        <button type="button" 
+                                                x-show="step !== 4" 
+                                                @click="validateStepForward()" 
+                                                style="flex:2; padding:0.875rem; border-radius:0; font-weight:800; font-size:0.85rem; text-transform:uppercase; background:black; border:2px solid black; color:white; cursor:pointer; transition:all 0.2s;"
+                                                onmouseover="this.style.background='white'; this.style.color='black';" onmouseout="this.style.background='black'; this.style.color='white';">
+                                            Next Step
+                                        </button>
+                                        <div x-show="step === 4" style="flex:2; display:flex; gap:0.5rem; width:100%;">
+                                            <button type="submit" name="add_to_cart" value="1" @click="checkFinalValidation($event)" style="flex:1; padding:0.875rem; border-radius:0; font-weight:800; font-size:0.85rem; text-transform:uppercase; background:white; border:2px solid black; color:black; cursor:pointer; transition:all 0.2s;" onmouseover="this.style.background='black'; this.style.color='white';" onmouseout="this.style.background='white'; this.style.color='black';">+ Cart</button>
+                                            <button type="submit" name="buy_now" value="1" @click="checkFinalValidation($event)" style="flex:1; padding:0.875rem; border-radius:0; font-weight:800; font-size:0.85rem; text-transform:uppercase; background:black; border:2px solid black; color:white; cursor:pointer; transition:all 0.2s;" onmouseover="this.style.background='white'; this.style.color='black';" onmouseout="this.style.background='black'; this.style.color='white';">Buy Now</button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div> <!-- .card (modal card) -->
+                        </div> <!-- .away -->
+                    </div> <!-- .order-modal-overlay -->
+                </div> <!-- .container (page container) -->
+</div> <!-- .min-h-screen (x-data="orderModal") -->
+
+
+<style>
+    [x-cloak] { display: none !important; }
+    .order-modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.85); /* Solid dark, no blur to fix hover bug */
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        transform: translate3d(0, 0, 0);
+        -webkit-transform: translate3d(0, 0, 0);
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
     }
     
-    function decrementQty() {
-        const input = document.getElementById('quantity');
-        let val = parseInt(input.value);
-        if (val > 1) {
-            input.value = val - 1;
-        }
+    /* Smooth scrollbar inside modal */
+    .order-modal-overlay ::-webkit-scrollbar { width: 6px; }
+    .order-modal-overlay ::-webkit-scrollbar-track { background: #f8fafc; }
+    .order-modal-overlay ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    .order-modal-overlay ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    
+    /* Input focus states inside modal */
+    .order-modal-overlay .input-field:focus {
+        border-color: black !important;
+        box-shadow: none !important;
+        outline: none;
     }
+    
+    /* Responsive modal on mobile */
+    @media (max-width: 640px) {
+        .order-modal-overlay { padding: 10px; }
+        .order-modal-overlay .card { border-radius: 16px !important; }
+    }
+
+    .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border-width: 0;
+    }
+</style>
+
+<script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('orderModal', () => ({
+            isOpen: <?php echo !empty($error_msg) ? 'true' : 'false'; ?>,
+            init() {
+                this.$watch('isOpen', value => {
+                    if (value) {
+                       document.body.classList.add('modal-open');
+                       document.body.style.overflow = 'hidden';
+                       
+                       // Auto-scroll to error if present
+                       this.$nextTick(() => {
+                           const errorGate = document.getElementById('modal-error-gate');
+                           if (errorGate) {
+                               errorGate.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                           }
+                       });
+                    } else {
+                       document.body.classList.remove('modal-open');
+                       document.body.style.overflow = '';
+                    }
+                });
+                // Initial state
+                if (this.isOpen) {
+                    document.body.classList.add('modal-open');
+                    document.body.style.overflow = 'hidden';
+                }
+            },
+            step: <?php echo !empty($error_msg) ? '4' : '1'; ?>,
+            sizeOption: 'OEM Size',
+            productCategory: '<?php echo addslashes($product['category'] ?? ''); ?>',
+            shirtSource: 'Shop',
+            printSize: '',
+            orderQty: 1,
+
+            // Tarpaulin specific
+            tarpSizeOption: 'Preset',
+            tarpPresetSize: '2x3',
+            tarpWidth: 2,
+            tarpHeight: 3,
+            tarpUnit: 'ft',
+            tarpMaterial: '10oz',
+            tarpFinish: 'Glossy',
+            tarpDesignService: 'Ready',
+            tarpEdges: 'Heat Cut Only',
+            tarpGrommetOption: 'With Grommets (All Sides)',
+
+            get totalTarpaulinPrice() {
+                let w = parseFloat(this.tarpWidth);
+                let h = parseFloat(this.tarpHeight);
+                if (this.tarpSizeOption === 'Preset') {
+                    let parts = this.tarpPresetSize.split('x');
+                    w = parseFloat(parts[0]);
+                    h = parseFloat(parts[1]);
+                }
+                
+                let sqft = (this.tarpUnit === 'in') ? (w * h) / 144 : (w * h);
+                let baseRate = <?php echo (float)($product['price'] > 0 ? $product['price'] : 25); ?>;
+                let price = sqft * baseRate;
+
+                if (this.tarpMaterial === '13oz') price *= 1.25;
+                if (this.tarpMaterial === '15oz') price *= 1.5;
+                if (this.tarpEdges === 'Folded & Sewn Edges') price += (sqft * 2);
+                if (this.tarpGrommetOption !== 'No Grommets') price += 10.00;
+                if (this.tarpDesignService === 'Requested') price += 50.00;
+
+                return Math.round(price * 100) / 100;
+            },
+
+            // Decals & Stickers Pricing (Base + Size Logic)
+            get totalDecalPrice() {
+                let baseRate = <?php echo (float)($product['price'] > 0 ? $product['price'] : 45); ?>;
+                if (this.sizeOption === 'Custom Size') {
+                    // Slight premium for choosing custom specs
+                    return baseRate + 15;
+                }
+                return baseRate;
+            },
+
+            validateStepForward() {
+                const currentStepEl = this.$el.querySelector(`[x-show="step === ${this.step}"]`);
+                if (!currentStepEl) {
+                    if (this.step < 4) this.step++;
+                    return;
+                }
+
+                // Check standard inputs
+                const inputs = currentStepEl.querySelectorAll('input[required], select[required], textarea[required]');
+                let isValid = true;
+                
+                inputs.forEach(input => {
+                    if (!input.checkValidity()) {
+                        input.reportValidity();
+                        isValid = false;
+                    }
+                });
+
+                if (isValid) {
+                    if (this.step < 4) this.step++;
+                    // Scroll to top of modal for new step
+                    this.$nextTick(() => {
+                        const modalBody = currentStepEl.closest('div[style*="overflow-y:auto"]');
+                        if (modalBody) modalBody.scrollTop = 0;
+                    });
+                }
+            },
+
+            checkFinalValidation(e) {
+                const form = document.getElementById('customization-form');
+                if (!form.checkValidity()) {
+                    e.preventDefault();
+                    form.reportValidity();
+                    // If invalid, find which step has the error and jump to it
+                    const allInputs = form.querySelectorAll('input[required], select[required], textarea[required]');
+                    for (let input of allInputs) {
+                        if (!input.checkValidity()) {
+                            // Find parent step
+                            let parent = input.closest('[x-show*="step === "]');
+                            if (parent) {
+                                const stepMatch = parent.getAttribute('x-show').match(/step === (\d+)/);
+                                if (stepMatch) {
+                                    this.step = parseInt(stepMatch[1]);
+                                    setTimeout(() => input.reportValidity(), 100);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }));
+    });
+
+    // Form submission helper
+    document.addEventListener('submit', (e) => {
+        if (e.target.id === 'customization-form') {
+            const formData = new FormData(e.target);
+            console.log('--- FORM SUBMITTING ---');
+            for (let [key, value] of formData.entries()) {
+                console.log(key + ':', value instanceof File ? `File: ${value.name}` : value);
+            }
+        }
+    });
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            const el = document.querySelector('[x-data="orderModal"]');
+            if (el && el._x_dataStack) {
+                // Alpine v3 internal data access
+                const data = el._x_dataStack[0];
+                if (data) data.isOpen = false;
+            }
+        }
+    });
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

@@ -26,6 +26,7 @@ $customer = db_query("SELECT * FROM customers WHERE customer_id = ?", 'i', [$cus
 // Fetch cancel count for downpayment check (needed on both GET and POST)
 $cancel_count = get_customer_cancel_count($customer_id);
 $is_restricted = is_customer_restricted($customer_id);
+$customer_type = $customer['customer_type'] ?? 'new';
 
 // Handle Order Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
@@ -38,25 +39,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
     if ($is_restricted) {
         $error = "🚫 Your account is restricted from placing new orders.";
     } elseif (verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        // Calculate mandatory downpayment if cancel_count >= 4
+        // Calculate mandatory downpayment and payment type
         $downpayment_amount = 0;
-        if ($cancel_count >= 4) {
-            $downpayment_amount = $total * 0.5;
+        $payment_type = 'full_payment';
+        $payment_status = 'Unpaid'; // Default
+
+        if ($customer_type === 'new') {
+            $downpayment_amount = $total;
+            $payment_type = 'full_payment';
+        } else {
+            // Regular customers can choose
+            $payment_choice = $_POST['payment_choice'] ?? 'half';
+            if ($payment_choice === 'full') {
+                $downpayment_amount = $total;
+                $payment_type = 'full_payment';
+            } elseif ($payment_choice === 'half') {
+                $downpayment_amount = $total * 0.5;
+                $payment_type = '50_percent';
+            } elseif ($payment_choice === 'pickup') {
+                $downpayment_amount = 0;
+                $payment_type = 'upon_pickup';
+                $payment_status = 'Unpaid'; // Don't require immediate payment for pickup
+            } else {
+                $downpayment_amount = $total * 0.5; // Default to half
+                $payment_type = '50_percent';
+            }
         }
 
         // Start Transaction (if supported, otherwise manual checks)
         // 1. Create Order
         $notes = $_POST['notes'] ?? null;
-        $order_sql = "INSERT INTO orders (customer_id, order_date, total_amount, downpayment_amount, status, payment_status, notes) 
-                      VALUES (?, NOW(), ?, ?, 'Pending Review', 'Unpaid', ?)";
+        $order_sql = "INSERT INTO orders (customer_id, order_date, total_amount, downpayment_amount, status, payment_status, payment_type, notes) 
+                      VALUES (?, NOW(), ?, ?, 'Pending Review', ?, ?, ?)";
         
         $payment_method = $_POST['payment_method'] ?? 'pay_later';
         
         // Removed payment_method from query as column doesn't exist
-        $order_id = db_execute($order_sql, 'idds', [$customer_id, $total, $downpayment_amount, $notes]);
+        $order_id = db_execute($order_sql, 'iddsss', [$customer_id, $total, $downpayment_amount, $payment_status, $payment_type, $notes]);
         
         if ($order_id) {
             // 2. Insert Order Items (design stored as LONGBLOB, never on disk)
+            $inserted_order_item_ids = [];
             foreach ($cart_items as $pid => $item) {
                 $custom_data    = isset($item['customization']) ? json_encode($item['customization']) : null;
                 $design_binary  = null;
@@ -88,11 +111,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
                         );
                         $item_stmt->send_long_data(5, $design_binary);
                         $item_stmt->execute();
+                        $inserted_order_item_ids[$pid] = $conn->insert_id;
                         $item_stmt->close();
                     }
                 } else {
                     // No design uploaded — insert without BLOB
-                    db_execute(
+                    $inserted_order_item_ids[$pid] = db_execute(
                         "INSERT INTO order_items (order_id, product_id, quantity, unit_price, customization_data)
                          VALUES (?, ?, ?, ?, ?)",
                         'iiids',
@@ -107,15 +131,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
                     @unlink($ci['design_tmp_path']);
                 }
             }
+            
+            // 4. Auto-create Job Orders for Production Workflow
+            foreach ($cart_items as $pid => $item) {
+                // Determine service type from item category or name
+                $service_type = $item['category'] ?? 'General';
+                $cat_lower = strtolower($service_type . ' ' . ($item['name'] ?? ''));
+                if (strpos($cat_lower, 'tarpaulin') !== false) $service_type = 'Tarpaulin';
+                elseif (strpos($cat_lower, 'reflectorized') !== false) $service_type = 'Reflectorized Signage';
+                elseif (strpos($cat_lower, 'sintraboard') !== false || strpos($cat_lower, 'standee') !== false) $service_type = 'Sintraboard & Standees';
+                elseif (strpos($cat_lower, 't-shirt') !== false || strpos($cat_lower, 'shirt') !== false) $service_type = 'T-Shirt Printing';
+                elseif (strpos($cat_lower, 'sticker') !== false || strpos($cat_lower, 'decal') !== false) $service_type = 'Decals & Stickers';
+                elseif (strpos($cat_lower, 'souvenir') !== false) $service_type = 'Souvenirs';
+                
+                // Parse dimensions from customization data
+                $custom = $item['customization'] ?? [];
+                $dimensions = $custom['dimensions'] ?? '';
+                $width_ft = 0; $height_ft = 0;
+                if ($dimensions && strpos($dimensions, 'x') !== false) {
+                    $parts = array_map('trim', explode('x', strtolower($dimensions)));
+                    $width_ft  = (float)($parts[0] ?? 0);
+                    $height_ft = (float)($parts[1] ?? 0);
+                } elseif ($dimensions && strpos($dimensions, '×') !== false) {
+                    $parts = array_map('trim', explode('×', $dimensions));
+                    $width_ft  = (float)($parts[0] ?? 0);
+                    $height_ft = (float)($parts[1] ?? 0);
+                }
+                
+                $job_title = $item['name'] ?? $service_type;
+                $job_qty   = (int)($item['quantity'] ?? 1);
+                $cust_type = ($customer_type === 'regular') ? 'REGULAR' : 'NEW';
+                $oi_id     = $inserted_order_item_ids[$pid] ?? null;
+                
+                db_execute(
+                    "INSERT INTO job_orders (job_title, service_type, customer_id, order_item_id, width_ft, height_ft, quantity, status, customer_type, estimated_total, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, NOW())",
+                    'ssiididids',
+                    [$job_title, $service_type, $customer_id, $oi_id, $width_ft, $height_ft, $job_qty, $cust_type, $item['price'] * $job_qty]
+                );
+            }
+            
             unset($_SESSION['cart']);
             
-            // 4. Notification
-            create_notification($customer_id, 'Customer', "Order #{$order_id} placed successfully!", 'Order', true, false);
+            // 5. Notification
+            create_notification($customer_id, 'Customer', "Order #{$order_id} placed successfully!", 'Order', true, false, $order_id);
             
             // Notify Staff
             $staff_users = db_query("SELECT user_id FROM users WHERE role = 'Staff' AND status = 'Activated'");
             foreach ($staff_users as $staff) {
-                create_notification($staff['user_id'], 'Staff', "New Order #{$order_id} received from {$customer['first_name']}!", 'Order', false, false);
+                create_notification($staff['user_id'], 'Staff', "New Order #{$order_id} received from {$customer['first_name']}!", 'Order', false, false, $order_id);
             }
             
             $_SESSION['success'] = "Your order #{$order_id} has been placed successfully! Our team will review it shortly. You can track the status here.";
@@ -152,7 +216,11 @@ require_once __DIR__ . '/../includes/header.php';
                     <h2 style="font-size:1.1rem; font-weight:600; margin-bottom:1rem; border-bottom:1px solid #f3f4f6; padding-bottom:0.5rem;">Contact Information</h2>
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">Name</label>
+                            <label class="block text-sm font-medium text-gray-700">Name
+                                <?php if ($customer_type === 'regular'): ?>
+                                    <span style="font-size:0.7rem; color:#15803d; font-weight:700; background:#dcfce7; padding:2px 6px; border-radius:4px; margin-left:6px;">Regular Customer – Flexible Payment Available</span>
+                                <?php endif; ?>
+                            </label>
                             <input type="text" class="input-field" value="<?php echo htmlspecialchars($customer['first_name'] . ' ' . $customer['last_name']); ?>" disabled style="background:#f9fafb;">
                         </div>
                         <div>
@@ -169,13 +237,45 @@ require_once __DIR__ . '/../includes/header.php';
                 
                 <!-- Payment Method -->
                 <div class="card">
-                    <h2 style="font-size:1.1rem; font-weight:600; margin-bottom:1rem; border-bottom:1px solid #f3f4f6; padding-bottom:0.5rem;">Payment Method</h2>
-                    <div>
-                        <label style="display:flex; align-items:center; gap:10px; padding:10px; border:1px solid #d1d5db; border-radius:8px; cursor:pointer;">
-                            <input type="radio" name="payment_method" value="pay_later" checked>
-                            <span style="font-weight:600;">Cash on Pickup / Pay Later</span>
-                        </label>
-                    </div>
+                    <h2 style="font-size:1.1rem; font-weight:600; margin-bottom:1rem; border-bottom:1px solid #f3f4f6; padding-bottom:0.5rem;">Payment Policy</h2>
+                    
+                    <?php if ($customer_type === 'new'): ?>
+                        <div style="background:#fff1f2; border:1px solid #fecaca; border-radius:8px; padding:12px 14px; font-size:0.85rem; color:#b91c1c;">
+                            ⚠️ <strong>New Customer Policy</strong><br>
+                            To process your order, <strong>full payment (PHP <?php echo number_format($total, 2); ?>)</strong> is required upfront. You'll become a 'Regular' customer after 3 successful orders!
+                        </div>
+                    <?php else: ?>
+                        <div style="background:#f0fdf4; border:1px solid #dcfce7; border-radius:8px; padding:10px 14px; font-size:0.85rem; color:#15803d; margin-bottom:1.25rem;">
+                            ✅ <strong>Regular Customer Benefit</strong><br>
+                            Choose your preferred payment option:
+                        </div>
+
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <label style="display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='white'">
+                                <input type="radio" name="payment_choice" value="full" style="width: 18px; height: 18px; cursor: pointer;">
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 700; font-size: 0.9rem; color: #1f2937;">Full Payment (100%)</div>
+                                    <div style="font-size: 0.75rem; color: #6b7280;">Pay <?php echo format_currency($total); ?> now</div>
+                                </div>
+                            </label>
+
+                            <label style="display: flex; align-items: center; gap: 10px; padding: 10px; border: 2px solid #4F46E5; background: #f5f3ff; border-radius: 8px; cursor: pointer;">
+                                <input type="radio" name="payment_choice" value="half" checked style="width: 18px; height: 18px; cursor: pointer;">
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 700; font-size: 0.9rem; color: #4F46E5;">Half Payment (50%)</div>
+                                    <div style="font-size: 0.75rem; color: #6b7280;">Pay <?php echo format_currency($total * 0.5); ?> now, balance upon pickup</div>
+                                </div>
+                            </label>
+
+                            <label style="display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='white'">
+                                <input type="radio" name="payment_choice" value="pickup" style="width: 18px; height: 18px; cursor: pointer;">
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 700; font-size: 0.9rem; color: #1f2937;">Upon Pick Up (0%)</div>
+                                    <div style="font-size: 0.75rem; color: #6b7280;">Pay full amount upon picking up your order</div>
+                                </div>
+                            </label>
+                        </div>
+                    <?php endif; ?>
                 </div>
 
                 <!-- Global Order Notes -->
@@ -233,24 +333,21 @@ require_once __DIR__ . '/../includes/header.php';
                         <span style="font-weight:600; color:#6b7280;">Subtotal</span>
                         <span style="font-weight:600;"><?php echo format_currency($total); ?></span>
                     </div>
-                    <?php if ($cancel_count >= 4): 
-                        $dp = $total * 0.5;
-                        $bal = $total - $dp;
-                    ?>
+                    <?php if ($customer_type === 'new'): ?>
                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <span style="font-weight:600; color:#92400e;">Downpayment (50%)</span>
-                            <span style="font-weight:700; color:#92400e;"><?php echo format_currency($dp); ?></span>
-                        </div>
-                        <div style="display:flex; justify-content:space-between; align-items:center; border-top:2px solid #e5e7eb; padding-top:0.5rem; margin-top:0.5rem;">
-                            <span style="font-weight:600;">Due at Pickup</span>
-                            <span style="font-size:1.5rem; font-weight:700; color:#4F46E5;"><?php echo format_currency($bal); ?></span>
+                            <span style="font-weight:600; color:#b91c1c;">Mandatory Downpayment</span>
+                            <span style="font-weight:700; color:#b91c1c;"><?php echo format_currency($total); ?></span>
                         </div>
                     <?php else: ?>
-                        <div style="display:flex; justify-content:space-between; align-items:center; border-top:2px solid #e5e7eb; padding-top:0.5rem; margin-top:0.5rem;">
-                            <span style="font-weight:600;">Total</span>
-                            <span style="font-size:1.5rem; font-weight:700; color:#4F46E5;"><?php echo format_currency($total); ?></span>
-                        </div>
+                        <p style="font-size: 0.75rem; color: #6b7280; border-top: 1px dashed #e5e7eb; padding-top: 0.5rem; margin-top: 0.5rem;">
+                            Regular customers can choose their downpayment above.
+                        </p>
                     <?php endif; ?>
+                    
+                    <div style="display:flex; justify-content:space-between; align-items:center; border-top:2px solid #e5e7eb; padding-top:0.5rem; margin-top:0.5rem;">
+                        <span style="font-weight:600;">Total</span>
+                        <span style="font-size:1.5rem; font-weight:700; color:#4F46E5;"><?php echo format_currency($total); ?></span>
+                    </div>
                 </div>
                 
                 <button type="submit" name="place_order" class="btn-primary" style="width:100%;">Place Order</button>

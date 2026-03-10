@@ -18,6 +18,12 @@ $sql = "SELECT * FROM products WHERE status = 'Activated'";
 $params = [];
 $types = '';
 
+if (!empty($category)) {
+    $sql .= " AND category = ?";
+    $params[] = $category;
+    $types .= 's';
+}
+
 if (!empty($search)) {
     $sql .= " AND (name LIKE ? OR description LIKE ?)";
     $search_term = '%' . $search . '%';
@@ -35,6 +41,12 @@ $offset = ($current_page - 1) * $items_per_page;
 $count_sql = "SELECT COUNT(*) as total FROM products WHERE status = 'Activated'";
 $count_params = [];
 $count_types = '';
+
+if (!empty($category)) {
+    $count_sql .= " AND category = ?";
+    $count_params[] = $category;
+    $count_types .= 's';
+}
 
 if (!empty($search)) {
     $count_sql .= " AND (name LIKE ? OR description LIKE ?)";
@@ -85,62 +97,57 @@ require_once __DIR__ . '/../includes/header.php';
                 <p>No products found</p>
             </div>
         <?php else: ?>
-            <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:1rem;">
+            <div class="ct-product-grid">
                 <?php foreach ($products as $product): ?>
-                    <div class="ct-product-card floating-card">
+                    <div class="ct-product-card">
                         <div class="ct-product-img">
-                            <span>📦</span>
+                            <div class="ct-product-img-inner">
+                                <?php 
+                                $img_path = "../public/images/products/product_" . $product['product_id'];
+                                $display_img = "";
+                                if (file_exists($img_path . ".jpg")) {
+                                    $display_img = "/printflow/public/images/products/product_" . $product['product_id'] . ".jpg";
+                                } elseif (file_exists($img_path . ".png")) {
+                                    $display_img = "/printflow/public/images/products/product_" . $product['product_id'] . ".png";
+                                }
+                                
+                                if ($display_img): ?>
+                                    <img src="<?php echo $display_img; ?>" alt="<?php echo htmlspecialchars($product['name']); ?>" style="width:100%; height:100%; object-fit:cover; border-radius:0.5rem;">
+                                <?php else: ?>
+                                    <span>📦</span>
+                                <?php endif; ?>
+                            </div>
                         </div>
-                        <div class="ct-product-body">
-                            <h3 class="ct-product-name" style="font-size: 0.9rem;"><?php echo htmlspecialchars($product['name']); ?></h3>
-                            <p class="ct-product-desc" style="display: none;"><?php echo htmlspecialchars(substr($product['description'], 0, 100)); ?>...</p>
-
-                            <p class="ct-product-price" style="font-size: 1rem; margin-bottom: 0.5rem;"><?php echo format_currency($product['price']); ?></p>
-                            <?php if ($product['stock_quantity'] > 0): ?>
-                                <span class="ct-product-stock in-stock" style="font-size: 0.7rem;">✓ In Stock</span>
-                            <?php else: ?>
-                                <span class="ct-product-stock out-stock" style="font-size: 0.7rem;">✕ Out of Stock</span>
+                        <div class="ct-product-body" <?php echo ($product['category'] === 'Decals & Stickers') ? 'style="text-align: center;"' : ''; ?>>
+                            <?php if ($product['category'] !== 'Decals & Stickers'): ?>
+                                <span class="ct-product-category"><?php echo htmlspecialchars($product['category']); ?></span>
+                            <?php endif; ?>
+                            
+                            <h3 class="ct-product-name" <?php echo ($product['category'] === 'Decals & Stickers') ? 'style="margin-bottom: 1.5rem; height: auto; font-weight: 700; font-size: 1.1rem;"' : ''; ?>><?php echo htmlspecialchars($product['name']); ?></h3>
+                            
+                            <?php if ($product['category'] !== 'Decals & Stickers'): ?>
+                                <p class="ct-product-price"><?php echo format_currency($product['price']); ?></p>
                             <?php endif; ?>
 
-                            <div class="ct-product-actions" style="margin-top:1rem; display:flex; flex-direction:column; gap:0.5rem;">
-                                <a href="order_create.php?product_id=<?php echo $product['product_id']; ?>&buy_now=1" class="btn-primary" style="width:100%; justify-content:center; padding:0.5rem; font-size: 0.8rem;">BUY NOW</a>
-                                <div style="display:flex; gap:0.5rem; align-items:center; justify-content:space-between;">
-                                    <a href="order_create.php?product_id=<?php echo $product['product_id']; ?>" class="btn-secondary" style="width: 100%; background:#fff; border:1px solid #d1d5db; padding:0.4rem; font-size:0.75rem; border-radius:6px; text-decoration:none; color:#374151; text-align: center;">ADD TO CART</a>
-                                </div>
+                            <div class="ct-product-actions" <?php echo ($product['category'] === 'Decals & Stickers') ? 'style="display: flex; justify-content: center;"' : ''; ?>>
+                                <?php if ($product['category'] !== 'Decals & Stickers'): ?>
+                                    <div>
+                                        <?php if ($product['stock_quantity'] > 0): ?>
+                                            <span class="ct-product-stock in-stock">✓ In Stock</span>
+                                        <?php else: ?>
+                                            <span class="ct-product-stock out-stock">✕ Out of Stock</span>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endif; ?>
+                                
+                                <a href="order_create.php?product_id=<?php echo $product['product_id']; ?>" class="ct-view-product-btn" <?php echo ($product['category'] === 'Decals & Stickers') ? 'style="width: 100%; text-align: center;"' : 'style="flex: 1; text-align: center;"'; ?>>
+                                    START CUSTOMIZING
+                                </a>
                             </div>
                         </div>
                     </div>
                 <?php endforeach; ?>
             </div>
-            
-            <style>
-                @media (max-width: 1100px) {
-                    div[style*="grid-template-columns:repeat(5, 1fr)"] {
-                        grid-template-columns: repeat(3, 1fr) !important;
-                    }
-                }
-                @media (max-width: 768px) {
-                    div[style*="grid-template-columns:repeat(5, 1fr)"] {
-                        grid-template-columns: repeat(2, 1fr) !important;
-                    }
-                }
-                @media (max-width: 480px) {
-                    div[style*="grid-template-columns:repeat(5, 1fr)"] {
-                        grid-template-columns: repeat(1, 1fr) !important;
-                    }
-                }
-                .floating-card {
-                    transition: all 0.3s ease;
-                    border: 1px solid #f3f4f6;
-                    border-radius: 12px;
-                    overflow: hidden;
-                    background: white;
-                }
-                .floating-card:hover {
-                    transform: translateY(-5px);
-                    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-                }
-            </style>
 
             <!-- Pagination -->
             <div class="mt-8">
